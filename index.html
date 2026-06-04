@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solar GPS — Your Journey Through the Solar System</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <span class="logo-icon">☀</span>
+      <span class="logo-text">Solar GPS</span>
+    </div>
+    <p class="tagline">See your journey on a cosmic scale</p>
+  </header>
+
+  <main>
+    <!-- Control Panel -->
+    <section class="control-panel">
+      <div class="tracking-status" id="trackingStatus">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusLabel">Ready to track</span>
+      </div>
+      <div class="controls">
+        <button id="startBtn" class="btn btn-primary">Start Journey</button>
+        <button id="stopBtn" class="btn btn-danger" disabled>Stop</button>
+        <button id="resetBtn" class="btn btn-secondary">Reset</button>
+      </div>
+      <div class="accuracy-info" id="accuracyInfo" style="display:none">
+        <span id="accuracyLabel"></span>
+      </div>
+    </section>
+
+    <!-- Stats Grid -->
+    <section class="stats-grid">
+      <div class="stat-card earth">
+        <div class="stat-icon">🚶</div>
+        <div class="stat-label">Your Distance</div>
+        <div class="stat-value" id="earthDistance">0 m</div>
+        <div class="stat-sub" id="earthTime">0s elapsed</div>
+      </div>
+      <div class="stat-card orbit">
+        <div class="stat-icon">🌍</div>
+        <div class="stat-label">Earth's Orbital Journey</div>
+        <div class="stat-value" id="orbitDistance">0 km</div>
+        <div class="stat-sub">~29.78 km/s around Sun</div>
+      </div>
+      <div class="stat-card rotation">
+        <div class="stat-icon">🔄</div>
+        <div class="stat-label">Earth's Rotation Arc</div>
+        <div class="stat-value" id="rotationDistance">0 km</div>
+        <div class="stat-sub" id="rotationSub">at your latitude</div>
+      </div>
+      <div class="stat-card galactic">
+        <div class="stat-icon">🌌</div>
+        <div class="stat-label">Galactic Travel</div>
+        <div class="stat-value" id="galacticDistance">0 km</div>
+        <div class="stat-sub">~220 km/s around galaxy</div>
+      </div>
+    </section>
+
+    <!-- Ratio Banner -->
+    <section class="ratio-banner" id="ratioBanner" style="display:none">
+      <p id="ratioText"></p>
+    </section>
+
+    <!-- Scale Comparison -->
+    <section class="scale-section" id="scaleSection" style="display:none">
+      <h2>Putting it in perspective</h2>
+      <div class="scale-bar-container">
+        <div class="scale-label">You</div>
+        <div class="scale-bar-wrap">
+          <div class="scale-bar you-bar" id="youBar"></div>
+        </div>
+        <div class="scale-value" id="youBarLabel"></div>
+      </div>
+      <div class="scale-bar-container">
+        <div class="scale-label">Earth's orbit</div>
+        <div class="scale-bar-wrap">
+          <div class="scale-bar orbit-bar" id="orbitBar"></div>
+        </div>
+        <div class="scale-value" id="orbitBarLabel"></div>
+      </div>
+      <div class="scale-bar-container">
+        <div class="scale-label">Galactic</div>
+        <div class="scale-bar-wrap">
+          <div class="scale-bar galactic-bar" id="galacticBar"></div>
+        </div>
+        <div class="scale-value" id="galacticBarLabel"></div>
+      </div>
+      <div class="fun-facts" id="funFacts"></div>
+    </section>
+
+    <!-- 3D Visualization -->
+    <section class="viz-section">
+      <h2>Earth's path during your journey</h2>
+      <p class="viz-desc">The arc shows how far Earth moved in its solar orbit while you were travelling</p>
+      <div class="canvas-wrap">
+        <canvas id="solarCanvas"></canvas>
+        <div class="canvas-legend">
+          <span class="legend-dot sun-dot"></span> Sun
+          <span class="legend-dot orbit-path-dot"></span> Earth's orbit
+          <span class="legend-dot arc-dot"></span> Your journey arc
+        </div>
+      </div>
+    </section>
+
+    <!-- Journey Log -->
+    <section class="log-section" id="logSection" style="display:none">
+      <h2>Journey Log</h2>
+      <div class="log-entries" id="logEntries"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Earth orbital speed: 29.78 km/s &bull; Galactic speed: ~220 km/s &bull; Data from NASA planetary fact sheets</p>
+  </footer>
+
+  <script src="solar.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
