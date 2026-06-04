@@ -492,6 +492,34 @@ footer {
   align-self: flex-start;
 }
 
+/* ── Viz Zoom Controls ────────────────────────────────── */
+.viz-zoom-controls {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.viz-zoom-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg2);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.viz-zoom-btn:hover { background: var(--bg3); color: var(--text); }
+.viz-zoom-btn:active { transform: scale(0.92); }
+.viz-zoom-reset { font-size: 0.75rem; }
+
 /* ── Responsive ───────────────────────────────────────── */
 @media (max-width: 600px) {
   .stats-grid { grid-template-columns: 1fr 1fr; }

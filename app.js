@@ -116,6 +116,17 @@ const orbitalRenderer  = new OrbitalRenderer($('orbitalCanvas'));
 const rotationRenderer = new RotationRenderer($('rotationCanvas'));
 const galacticRenderer = new GalacticRenderer($('galacticCanvas'));
 
+// Zoom buttons
+$('orbitalZoomIn').addEventListener('click',      () => orbitalRenderer.zoomIn());
+$('orbitalZoomOut').addEventListener('click',     () => orbitalRenderer.zoomOut());
+$('orbitalZoomReset').addEventListener('click',   () => orbitalRenderer.resetZoom());
+$('rotationZoomIn').addEventListener('click',     () => rotationRenderer.zoomIn());
+$('rotationZoomOut').addEventListener('click',    () => rotationRenderer.zoomOut());
+$('rotationZoomReset').addEventListener('click',  () => rotationRenderer.resetZoom());
+$('galacticZoomIn').addEventListener('click',     () => galacticRenderer.zoomIn());
+$('galacticZoomOut').addEventListener('click',    () => galacticRenderer.zoomOut());
+$('galacticZoomReset').addEventListener('click',  () => galacticRenderer.resetZoom());
+
 // ── Mode Switching ────────────────────────────────────────────────────────────
 
 modeTabLive.addEventListener('click', () => switchMode('live'));

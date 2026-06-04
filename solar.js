@@ -325,12 +325,21 @@ class OrbitalRenderer {
     this._c = _initCanvas(canvas);
     this.targetAngle = 0;
     this.animAngle   = 0;
+    this.userZoom    = 1.0;
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      e.deltaY < 0 ? this.zoomIn() : this.zoomOut();
+    }, { passive: false });
     this._loop();
   }
 
   setValues(orbitalAngleRad) {
     this.targetAngle = Math.min(orbitalAngleRad, Math.PI * 1.95);
   }
+
+  zoomIn()    { this.userZoom = Math.min(this.userZoom * 1.5, 200); }
+  zoomOut()   { this.userZoom = Math.max(this.userZoom / 1.5, 0.05); }
+  resetZoom() { this.userZoom = 1.0; }
 
   _loop() {
     this.animAngle += (this.targetAngle - this.animAngle) * 0.06;
@@ -351,9 +360,9 @@ class OrbitalRenderer {
     // Zoom so the arc always fills ≥18% of the smaller canvas dimension.
     // For angle=0 show a fixed default view (0.4 rad of orbit).
     const MIN_ARC_PX = Math.min(W, H) * 0.18;
-    const orbitR = angle > 1e-9
+    const orbitR = (angle > 1e-9
       ? Math.max(MIN_ARC_PX / angle, Math.min(W, H) * 0.35)
-      : Math.min(W, H) * 0.38;
+      : Math.min(W, H) * 0.38) * this.userZoom;
 
     // How much of the orbit arc fits inside the canvas at this zoom
     const halfChord = Math.min(W, H) * 0.44;
@@ -465,7 +474,8 @@ class OrbitalRenderer {
     const pctStr = pct < 0.0001 ? pct.toExponential(2) + '%'
                  : pct < 0.01   ? pct.toFixed(5) + '%'
                  :                 pct.toFixed(3) + '%';
-    const zoom = Math.max(1, Math.round(orbitR / (Math.min(W, H) * 0.38)));
+    const autoZoom = Math.max(1, Math.round(orbitR / (Math.min(W, H) * 0.38 * this.userZoom)));
+    const zoomStr  = this.userZoom !== 1.0 ? ` · ${this.userZoom.toFixed(2)}× user zoom` : '';
 
     ctx.fillStyle = 'rgba(8,8,18,0.75)';
     ctx.fillRect(0, H - 36, W, 36);
@@ -475,7 +485,7 @@ class OrbitalRenderer {
     ctx.fillText(`${pctStr} of full orbit`, 10, H - 20);
     ctx.fillStyle = 'rgba(255,255,255,0.32)';
     ctx.font = '9px sans-serif';
-    ctx.fillText(zoom > 1 ? `${zoom}× zoom to show arc` : 'Full orbit view', 10, H - 7);
+    ctx.fillText((autoZoom > 1 ? `${autoZoom}× auto-zoom` : 'Full orbit view') + zoomStr, 10, H - 7);
   }
 }
 
@@ -545,6 +555,11 @@ class RotationRenderer {
     this.animAngle   = 0;
     this.latitude    = 51.5;
     this.longitude   = 0;
+    this.userZoom    = 1.0;
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      e.deltaY < 0 ? this.zoomIn() : this.zoomOut();
+    }, { passive: false });
     _fetchLandData();
     this._loop();
   }
@@ -554,6 +569,10 @@ class RotationRenderer {
     this.latitude    = latitudeDeg  ?? 51.5;
     this.longitude   = longitudeDeg ?? 0;
   }
+
+  zoomIn()    { this.userZoom = Math.min(this.userZoom * 1.5, 8); }
+  zoomOut()   { this.userZoom = Math.max(this.userZoom / 1.5, 0.2); }
+  resetZoom() { this.userZoom = 1.0; }
 
   _loop() {
     this.animAngle += (this.targetAngle - this.animAngle) * 0.06;
@@ -568,7 +587,7 @@ class RotationRenderer {
     _drawStarfield(ctx, W, H, 50, 99);
 
     const cx = W * 0.5, cy = H * 0.5;
-    const R  = Math.min(W, H) * 0.40;
+    const R  = Math.min(W, H) * 0.40 * this.userZoom;
 
     // Earth rotates eastward. From a fixed point in space, the visible face's
     // central longitude decreases as time passes: currCLon = C0 - rotDeg.
@@ -687,7 +706,8 @@ class RotationRenderer {
     ctx.fillText(`${pctStr} of full rotation  ·  ${rotDeg.toFixed(2)}°`, 10, H - 20);
     ctx.fillStyle = 'rgba(255,255,255,0.32)';
     ctx.font = '9px sans-serif';
-    ctx.fillText('Equatorial view · ghost = start · bright = now', 10, H - 7);
+    const rotZoomStr = this.userZoom !== 1.0 ? `${this.userZoom.toFixed(2)}× zoom · ` : '';
+    ctx.fillText(`${rotZoomStr}ghost = start · bright = now`, 10, H - 7);
   }
 
   // Draw continent land masses using orthographic equatorial projection.
@@ -750,12 +770,21 @@ class GalacticRenderer {
     this._c = _initCanvas(canvas);
     this.targetKm = 0;
     this.animKm   = 0;
+    this.userZoom = 1.0;
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      e.deltaY < 0 ? this.zoomIn() : this.zoomOut();
+    }, { passive: false });
     this._loop();
   }
 
   setValues(galacticKm) {
     this.targetKm = galacticKm;
   }
+
+  zoomIn()    { this.userZoom = Math.min(this.userZoom * 1.5, 100); }
+  zoomOut()   { this.userZoom = Math.max(this.userZoom / 1.5, 0.05); }
+  resetZoom() { this.userZoom = 1.0; }
 
   _loop() {
     this.animKm += (this.targetKm - this.animKm) * 0.06;
@@ -785,13 +814,15 @@ class GalacticRenderer {
     }
     ctx.restore();
 
-    // Scale: choose a round reference that fits nicely
+    // Scale: choose a round reference that fits nicely, then apply user zoom.
+    // Zoom in (userZoom > 1) shrinks scaleMax so the trail fills more of the track.
     const MOON = 384_400;
     const AU   = 149_597_870;
     let scaleMax = MOON;
     if (km > AU)        scaleMax = km * 1.25;
     else if (km > MOON) scaleMax = AU   * 1.15;
     else                scaleMax = MOON * 1.15;
+    scaleMax = Math.max(scaleMax / this.userZoom, km > 0 ? km * 1.05 : MOON * 0.1);
 
     const refs = [
       { km: MOON, label: 'Moon (384k km)', color: 'rgba(200,200,220,0.55)' },
@@ -883,7 +914,8 @@ class GalacticRenderer {
     ctx.fillText(km > 0 ? `${formatKm(km)} through the Milky Way` : 'Galactic trail', 10, H - 20);
     ctx.fillStyle = 'rgba(255,255,255,0.32)';
     ctx.font = '9px sans-serif';
-    ctx.fillText('Solar System speed: ~220 km/s', 10, H - 7);
+    const galZoomStr = this.userZoom !== 1.0 ? `${this.userZoom.toFixed(2)}× zoom · ` : '';
+    ctx.fillText(`${galZoomStr}Solar System speed: ~220 km/s`, 10, H - 7);
   }
 }
 
