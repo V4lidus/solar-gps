@@ -264,7 +264,8 @@ function processRoute(points) {
   return {
     totalMeters,
     elapsedSeconds: Math.max(elapsedSeconds, 1),
-    latitude: points[0].lat,
+    latitude:  points[0].lat,
+    longitude: points[0].lon,
     hasTime,
     pointCount: points.length,
   };
@@ -478,142 +479,186 @@ class OrbitalRenderer {
   }
 }
 
+// ── Land polygon data ────────────────────────────────────────────────────────
+// Simplified continent outlines as [longitude, latitude] pairs (degrees).
+// Used by RotationRenderer for the equatorial globe view.
+
+const LAND_POLYGONS = [
+  // North America
+  [[-168,65],[-140,72],[-100,82],[-75,79],[-60,55],[-52,47],
+   [-66,44],[-70,42],[-76,35],[-80,25],[-88,17],[-92,16],
+   [-105,23],[-115,30],[-118,34],[-124,48],[-130,55],[-148,60],[-168,65]],
+  // Greenland
+  [[-55,60],[-40,66],[-22,76],[-18,83],[-30,84],[-52,82],[-65,76],[-60,68],[-55,60]],
+  // South America
+  [[-78,12],[-60,12],[-35,-5],[-35,-10],[-40,-20],[-48,-27],
+   [-52,-34],[-65,-56],[-75,-50],[-75,-35],[-70,-18],[-76,-10],[-78,0],[-78,12]],
+  // Europe (mainland + Scandinavia outline)
+  [[-9,36],[15,36],[28,42],[42,42],[52,46],[32,60],[28,70],
+   [18,72],[14,68],[5,60],[-4,58],[-8,50],[-9,44],[-9,36]],
+  // British Isles
+  [[-5,50],[2,51],[2,55],[-2,58],[-5,57],[-6,54],[-5,50]],
+  // Iceland
+  [[-24,63],[-13,66],[-13,65],[-18,63],[-24,63]],
+  // Africa
+  [[-17,15],[-16,6],[0,5],[10,5],[15,2],[42,12],[51,12],
+   [44,0],[40,-12],[36,-20],[20,-36],[12,-30],[8,-5],[-5,0],[-17,15]],
+  // Asia (mainland + India + SE Asia coast)
+  [[42,42],[62,42],[82,48],[102,50],[122,52],[142,50],[144,42],
+   [132,32],[122,25],[110,18],[104,10],[100,3],[104,2],[110,5],
+   [120,20],[116,30],[102,25],[90,22],[82,10],[78,8],[72,22],
+   [62,22],[56,24],[44,12],[36,28],[42,42]],
+  // Australia
+  [[114,-22],[122,-18],[130,-15],[136,-12],[145,-16],[148,-22],
+   [154,-28],[152,-36],[148,-40],[138,-36],[130,-32],[114,-30],[114,-22]],
+  // Japan
+  [[130,32],[132,34],[137,36],[140,40],[145,43],[141,44],
+   [135,38],[130,33],[130,32]],
+  // New Zealand
+  [[166,-46],[168,-45],[170,-44],[174,-42],[178,-40],[177,-37],
+   [174,-36],[172,-38],[170,-42],[166,-46]],
+];
+
 // ── Earth Rotation Renderer ──────────────────────────────────────────────────
-// Top-down (north-pole) view of Earth. Shows how far Earth has rotated during
-// the journey. 48 min = 12° of rotation — clearly visible at this scale.
+// Equatorial (side-on) view of Earth as seen from space, with continent
+// outlines in orthographic projection. Ghost continents show where land was
+// at journey start; bright continents show where it is now.
 
 class RotationRenderer {
   constructor(canvas) {
-    this._c = _initCanvas(canvas);
+    this._c       = _initCanvas(canvas);
     this.targetAngle = 0;
     this.animAngle   = 0;
-    this.latitude    = 0;
+    this.latitude    = 51.5;
+    this.longitude   = 0;
     this._loop();
   }
 
-  setValues(rotationAngleRad, latitudeDeg) {
+  setValues(rotationAngleRad, latitudeDeg, longitudeDeg) {
     this.targetAngle = Math.min(rotationAngleRad, Math.PI * 1.95);
-    this.latitude    = latitudeDeg || 0;
+    this.latitude    = latitudeDeg  ?? 51.5;
+    this.longitude   = longitudeDeg ?? 0;
   }
 
   _loop() {
     this.animAngle += (this.targetAngle - this.animAngle) * 0.06;
     const { getW, getH } = this._c;
-    if (getW() > 1) this._draw(this.animAngle, this.latitude, getW(), getH());
+    if (getW() > 1) this._draw(this.animAngle, this.latitude, this.longitude, getW(), getH());
     requestAnimationFrame(() => this._loop());
   }
 
-  _draw(angle, latDeg, W, H) {
+  _draw(angle, latDeg, lonDeg, W, H) {
     const { ctx } = this._c;
     ctx.clearRect(0, 0, W, H);
     _drawStarfield(ctx, W, H, 50, 99);
 
     const cx = W * 0.5, cy = H * 0.5;
-    const earthR  = Math.min(W, H) * 0.36;
-    const latRad  = (latDeg * Math.PI) / 180;
-    const arcR    = Math.abs(latDeg) > 3 ? earthR * Math.cos(latRad) : earthR;
+    const R  = Math.min(W, H) * 0.40;
 
-    // Earth disc (night side shading)
-    const eg = ctx.createRadialGradient(cx - earthR * 0.25, cy - earthR * 0.25, 0, cx, cy, earthR);
-    eg.addColorStop(0, '#1e4a7a');
-    eg.addColorStop(0.55, '#0d2a50');
-    eg.addColorStop(1, '#060e20');
+    // Earth rotates eastward. From a fixed point in space, the visible face's
+    // central longitude decreases as time passes: currCLon = C0 - rotDeg.
+    const C0      = lonDeg;          // user's longitude = center of start view
+    const rotDeg  = angle * 180 / Math.PI;
+    const currCLon = C0 - rotDeg;
+
+    // Ocean disc
+    const og = ctx.createRadialGradient(cx - R * 0.2, cy - R * 0.25, 0, cx, cy, R);
+    og.addColorStop(0, '#1a4a7a');
+    og.addColorStop(0.6, '#0d2d50');
+    og.addColorStop(1, '#061525');
     ctx.beginPath();
-    ctx.arc(cx, cy, earthR, 0, Math.PI * 2);
-    ctx.fillStyle = eg;
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fillStyle = og;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(74,158,255,0.22)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
 
-    // Equator ring (faint)
+    // Ghost continents — where land was at journey start
+    if (angle > 0.01) {
+      this._drawLand(ctx, C0, cx, cy, R, 0.22);
+    }
+
+    // Current continents — where land is now
+    this._drawLand(ctx, currCLon, cx, cy, R, 0.88);
+
+    // Atmosphere rim glow
+    const ag = ctx.createRadialGradient(cx, cy, R * 0.93, cx, cy, R * 1.08);
+    ag.addColorStop(0, 'rgba(80,160,255,0.18)');
+    ag.addColorStop(1, 'transparent');
     ctx.beginPath();
-    ctx.arc(cx, cy, earthR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 0.5;
+    ctx.arc(cx, cy, R * 1.08, 0, Math.PI * 2);
+    ctx.fillStyle = ag;
+    ctx.fill();
+
+    // Earth border
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(100,170,255,0.28)';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Latitude circle
-    if (Math.abs(latDeg) > 3 && Math.abs(latDeg) < 87) {
+    // User's latitude strip — a dotted horizontal line at user's lat height
+    const latRad = latDeg * Math.PI / 180;
+    const latY   = cy - R * Math.sin(latRad);
+    const latHW  = R * Math.cos(latRad); // half-width of lat circle on visible disc
+
+    if (Math.abs(latY - cy) < R) {
       ctx.beginPath();
-      ctx.arc(cx, cy, arcR, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.moveTo(cx - latHW, latY);
+      ctx.lineTo(cx + latHW, latY);
+      ctx.strokeStyle = 'rgba(255,200,50,0.38)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 5]);
       ctx.stroke();
       ctx.setLineDash([]);
-    }
 
-    // Rotation arc — Earth spins counterclockwise from north pole view,
-    // but we show it clockwise in canvas coords for clarity (direction label explains)
-    const START_A = -Math.PI / 2; // top = North
-    const endA    = START_A + angle;
-
-    if (angle > 0.001) {
-      // Filled sector
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, arcR, START_A, endA);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(79,255,176,0.1)';
-      ctx.fill();
-
-      // Arc edge
-      ctx.beginPath();
-      ctx.arc(cx, cy, arcR, START_A, endA);
-      ctx.strokeStyle = '#4fffb0';
-      ctx.lineWidth = 2.5;
-      ctx.shadowColor = '#4fffb0';
-      ctx.shadowBlur = 8;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // Spoke lines
-      const spoke = (a, alpha) => {
+      // Start marker — user at C0 = center of initial view (x = cx)
+      if (angle > 0.01) {
         ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(cx + arcR * Math.cos(a), cy + arcR * Math.sin(a));
-        ctx.strokeStyle = `rgba(79,255,176,${alpha})`;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      };
-      spoke(START_A, 0.35);
-      spoke(endA, 0.7);
+        ctx.arc(cx, latY, 5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,124,67,0.75)';
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Start', cx, latY - 9);
+      }
 
-      // Current position dot
-      const px = cx + arcR * Math.cos(endA);
-      const py = cy + arcR * Math.sin(endA);
+      // Current marker — user has moved east by rotDeg, visible at sin(rotDeg) from centre
+      const userX = cx + R * Math.cos(latRad) * Math.sin(rotDeg * Math.PI / 180);
+
+      if (angle > 0.01) {
+        // Curved arc connecting start → now along the latitude strip
+        ctx.beginPath();
+        ctx.moveTo(cx, latY);
+        const arcBow = Math.min(Math.abs(userX - cx) * 0.35 + 6, R * 0.25);
+        ctx.quadraticCurveTo((cx + userX) / 2, latY - arcBow, userX, latY);
+        ctx.strokeStyle = 'rgba(79,255,176,0.65)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
       ctx.beginPath();
-      ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+      ctx.arc(userX, latY, 5.5, 0, Math.PI * 2);
       ctx.fillStyle = '#4fffb0';
       ctx.shadowColor = '#4fffb0';
       ctx.shadowBlur = 8;
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.fillStyle = '#4fffb0';
-      ctx.font = 'bold 10px sans-serif';
-      ctx.textAlign = 'center';
-      const nl = arcR + 16;
-      ctx.fillText('Now', cx + nl * Math.cos(endA), cy + nl * Math.sin(endA));
+      if (angle > 0.01) {
+        ctx.fillStyle = '#4fffb0';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Now', userX, latY - 9);
+      }
     }
 
-    // Compass labels
-    ctx.fillStyle = 'rgba(255,255,255,0.38)';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    const cp = earthR + 14;
-    ctx.fillText('N', cx, cy - cp + 4);
-    ctx.fillText('S', cx, cy + cp + 4);
-    ctx.fillText('E', cx + cp, cy + 4);
-    ctx.fillText('W', cx - cp, cy + 4);
-
-    // Lat label
-    if (Math.abs(latDeg) > 3) {
-      ctx.fillStyle = 'rgba(255,255,255,0.28)';
-      ctx.font = '9px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(`${Math.abs(latDeg).toFixed(1)}°${latDeg >= 0 ? 'N' : 'S'}`, W - 8, 14);
-    }
+    // Lat/lon label
+    ctx.fillStyle = 'rgba(255,200,50,0.5)';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(
+      `${Math.abs(latDeg).toFixed(1)}°${latDeg >= 0 ? 'N' : 'S'} · centered ${lonDeg.toFixed(1)}°`,
+      W - 8, 14,
+    );
 
     // Info bar
     const pct    = (angle / (2 * Math.PI)) * 100;
@@ -624,10 +669,51 @@ class RotationRenderer {
     ctx.fillStyle = '#4fffb0';
     ctx.font = 'bold 11px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`${pctStr} of full rotation`, 10, H - 20);
+    ctx.fillText(`${pctStr} of full rotation  ·  ${rotDeg.toFixed(2)}°`, 10, H - 20);
     ctx.fillStyle = 'rgba(255,255,255,0.32)';
     ctx.font = '9px sans-serif';
-    ctx.fillText('North-pole view · full rotation = 24 h', 10, H - 7);
+    ctx.fillText('Equatorial view · ghost = start · bright = now', 10, H - 7);
+  }
+
+  // Draw continent land masses using orthographic equatorial projection.
+  // centralLon: the geographic longitude facing the viewer.
+  // Only pixels with z = cos(lat)·cos(lon-centralLon) > 0 are on the visible hemisphere.
+  _drawLand(ctx, centralLon, cx, cy, R, opacity) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, R - 0.5, 0, Math.PI * 2);
+    ctx.clip();
+
+    for (const poly of LAND_POLYGONS) {
+      let seg = [];
+      const flush = () => {
+        if (seg.length < 2) { seg = []; return; }
+        ctx.beginPath();
+        ctx.moveTo(seg[0][0], seg[0][1]);
+        for (let k = 1; k < seg.length; k++) ctx.lineTo(seg[k][0], seg[k][1]);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(86,139,68,${opacity})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(50,100,40,${opacity * 0.55})`;
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+        seg = [];
+      };
+
+      for (const [plon, plat] of poly) {
+        const phi = plat * Math.PI / 180;
+        const lam = (plon - centralLon) * Math.PI / 180;
+        const z   = Math.cos(phi) * Math.cos(lam); // > 0 = visible hemisphere
+        if (z > 0) {
+          seg.push([cx + R * Math.cos(phi) * Math.sin(lam), cy - R * Math.sin(phi)]);
+        } else {
+          flush();
+        }
+      }
+      flush();
+    }
+
+    ctx.restore();
   }
 }
 

@@ -57,6 +57,7 @@ const state = {
   totalMeters: 0,
   elapsedSeconds: 0,
   latitude: 0,
+  longitude: 0,
   points: [],
 };
 
@@ -201,6 +202,7 @@ function stopTracking() {
 function onPosition(pos) {
   const { latitude, longitude, accuracy } = pos.coords;
   state.latitude = latitude;
+  state.longitude = longitude;
   accuracyLabel.textContent = `GPS accuracy: ±${accuracy.toFixed(0)} m`;
   accuracyInfo.style.display = 'block';
 
@@ -299,6 +301,7 @@ function loadRoute(points, name, isDemo) {
   state.totalMeters = totalMeters;
   state.elapsedSeconds = elapsedSeconds;
   state.latitude = latitude;
+  state.longitude = longitude;
   state.points = points;
 
   // Show file info card
@@ -336,7 +339,7 @@ function updateDisplay() {
 
   const rotAngle = (elapsed / 86400) * 2 * Math.PI;
   orbitalRenderer.setValues(solar.orbitalAngleRad);
-  rotationRenderer.setValues(rotAngle, state.latitude);
+  rotationRenderer.setValues(rotAngle, state.latitude, state.longitude);
   galacticRenderer.setValues(solar.galacticKm);
 
   if (elapsed > 5 || state.totalMeters > 0) {
@@ -394,7 +397,7 @@ function resetDisplay() {
   logSection.style.display   = 'none';
   logEntries.innerHTML = '';
   orbitalRenderer.setValues(0);
-  rotationRenderer.setValues(0, 0);
+  rotationRenderer.setValues(0, 0, 0);
   galacticRenderer.setValues(0);
 }
 

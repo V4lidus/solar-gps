@@ -92,6 +92,19 @@ Files without timestamps (e.g. planned routes) are supported — elapsed time is
 
 ## Changelog
 
+### v0.5 — Globe rotation view with real continent outlines
+
+**Problem fixed:** The previous rotation panel showed an abstract top-down polar view with a latitude ring — useful but not visually intuitive.
+
+**Solution:** `RotationRenderer` replaced with an equatorial orthographic globe showing actual continent outlines:
+
+- Faint ghost continents mark where land was at the **start** of your journey (your GPS longitude centred on the globe).
+- Bright continents show where land is **now**, after Earth has rotated.
+- An orange dot marks your **start position**; a teal dot with a curved arc shows where that point on Earth's surface has moved to.
+- Projection: orthographic equatorial — `x = cx + R·cos(lat)·sin(lon − centralLon)`, `y = cy − R·sin(lat)`. Points with `z = cos(lat)·cos(lon − centralLon) ≤ 0` are on the back hemisphere and skipped.
+- Continent polygons clipped to the Earth disc so nothing bleeds outside the globe.
+- Shows degrees rotated, % of full day, and distance swept at the user's latitude.
+
 ### v0.4 — Three independent visualisations with dynamic zoom
 
 **Problem fixed:** The orbital arc for a 48-min walk is only 0.028° of the full orbit — completely invisible at full-orbit scale. Previous renderer showed the entire orbit circle, making the arc impossible to see for any journey under several weeks.
