@@ -92,6 +92,20 @@ Files without timestamps (e.g. planned routes) are supported — elapsed time is
 
 ## Changelog
 
+### v0.4 — Three independent visualisations with dynamic zoom
+
+**Problem fixed:** The orbital arc for a 48-min walk is only 0.028° of the full orbit — completely invisible at full-orbit scale. Previous renderer showed the entire orbit circle, making the arc impossible to see for any journey under several weeks.
+
+**Solution:** Three separate canvas panels, each with its own scale:
+
+- **Orbital arc** (`OrbitalRenderer`) — dynamically zooms until the arc always spans ≥18% of the canvas. For a 48-min walk that means ~2,600× zoom; the orbit appears as a straight line at that scale (which is physically correct — Earth's orbit looks flat when you're this close to it). Shows zoom level and % of full orbit in the info bar. Sun drawn when in frame, otherwise a directional arrow points to it.
+
+- **Rotation arc** (`RotationRenderer`) — top-down North-pole view of Earth. Earth's rotation is 12° per 48 min, clearly visible at globe scale. Shows latitude circle, compass labels, and % of full 24-hour rotation.
+
+- **Galactic trail** (`GalacticRenderer`) — linear distance track (since the galactic orbit angle is ≈0 for any journey ≤ years). Scale auto-adjusts between Moon-distance and 1-AU references. Motion-streak starfield conveys speed. Shows Solar System (☀) at its current position along the trail.
+
+Layout: two square panels side-by-side (orbital + rotation), full-width wide panel below (galactic). Responsive — collapses to single column on mobile.
+
 ### v0.3 — TCX file support
 
 - Added `parseTCX` in `solar.js` — handles Garmin Training Center XML format

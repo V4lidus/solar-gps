@@ -109,9 +109,11 @@ const funFacts      = $('funFacts');
 const logSection = $('logSection');
 const logEntries = $('logEntries');
 
-// ── Canvas Renderer ───────────────────────────────────────────────────────────
+// ── Canvas Renderers ──────────────────────────────────────────────────────────
 
-const renderer = new SolarRenderer($('solarCanvas'));
+const orbitalRenderer  = new OrbitalRenderer($('orbitalCanvas'));
+const rotationRenderer = new RotationRenderer($('rotationCanvas'));
+const galacticRenderer = new GalacticRenderer($('galacticCanvas'));
 
 // ── Mode Switching ────────────────────────────────────────────────────────────
 
@@ -332,7 +334,10 @@ function updateDisplay() {
   rotationSubEl.textContent = `at ${state.latitude.toFixed(1)}° lat`;
   galacticDistanceEl.textContent = formatKm(solar.galacticKm);
 
-  renderer.setAngle(solar.orbitalAngleRad);
+  const rotAngle = (elapsed / 86400) * 2 * Math.PI;
+  orbitalRenderer.setValues(solar.orbitalAngleRad);
+  rotationRenderer.setValues(rotAngle, state.latitude);
+  galacticRenderer.setValues(solar.galacticKm);
 
   if (elapsed > 5 || state.totalMeters > 0) {
     ratioBanner.style.display = 'block';
@@ -388,7 +393,9 @@ function resetDisplay() {
   scaleSection.style.display = 'none';
   logSection.style.display   = 'none';
   logEntries.innerHTML = '';
-  renderer.setAngle(0);
+  orbitalRenderer.setValues(0);
+  rotationRenderer.setValues(0, 0);
+  galacticRenderer.setValues(0);
 }
 
 // ── Status Helper ─────────────────────────────────────────────────────────────

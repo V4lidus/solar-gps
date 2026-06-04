@@ -130,14 +130,41 @@
 
     <!-- Visualization -->
     <section class="viz-section">
-      <h2>Earth's path during your journey</h2>
-      <p class="viz-desc">The arc shows how far Earth moved in its solar orbit while you were travelling</p>
-      <div class="canvas-wrap">
-        <canvas id="solarCanvas"></canvas>
-        <div class="canvas-legend">
-          <span class="legend-dot sun-dot"></span> Sun
-          <span class="legend-dot orbit-path-dot"></span> Earth's orbit
-          <span class="legend-dot arc-dot"></span> Your journey arc
+      <h2>Earth's journeys during your trip</h2>
+      <p class="viz-desc">Three frames of reference — each auto-zoomed so the arc is always visible</p>
+
+      <div class="viz-grid">
+        <div class="viz-panel">
+          <div class="viz-panel-header">
+            <span class="viz-panel-dot" style="background:#ff7c43"></span>
+            <h3>Orbital arc</h3>
+            <span class="viz-panel-sub">around the Sun · 29.78 km/s</span>
+          </div>
+          <div class="canvas-wrap canvas-square">
+            <canvas id="orbitalCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="viz-panel">
+          <div class="viz-panel-header">
+            <span class="viz-panel-dot" style="background:#4fffb0"></span>
+            <h3>Rotation arc</h3>
+            <span class="viz-panel-sub">Earth spinning · ~0.46 km/s equator</span>
+          </div>
+          <div class="canvas-wrap canvas-square">
+            <canvas id="rotationCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="viz-panel viz-panel-wide">
+          <div class="viz-panel-header">
+            <span class="viz-panel-dot" style="background:#b47aff"></span>
+            <h3>Galactic trail</h3>
+            <span class="viz-panel-sub">Solar System through the Milky Way · ~220 km/s</span>
+          </div>
+          <div class="canvas-wrap canvas-wide">
+            <canvas id="galacticCanvas"></canvas>
+          </div>
         </div>
       </div>
     </section>

@@ -264,48 +264,68 @@ main {
 }
 
 .viz-section h2 { margin-bottom: 0.3rem; font-size: 1.1rem; }
-.viz-desc { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem; }
+.viz-desc { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem; }
+
+/* Two square panels on top, wide galactic panel below */
+.viz-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.viz-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.viz-panel {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.viz-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.9rem 0.5rem;
+  flex-wrap: wrap;
+}
+
+.viz-panel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.viz-panel-header h3 {
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.viz-panel-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: auto;
+}
 
 .canvas-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 16/9;
   background: radial-gradient(ellipse at 50% 50%, #0d0d2a 0%, #020208 100%);
-  border-radius: 8px;
   overflow: hidden;
 }
 
-#solarCanvas {
+.canvas-square { aspect-ratio: 1 / 1; }
+.canvas-wide   { aspect-ratio: 3 / 1; }
+
+.canvas-wrap canvas {
   width: 100%;
   height: 100%;
   display: block;
 }
-
-.canvas-legend {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  display: flex;
-  gap: 1rem;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  align-items: center;
-  background: rgba(0,0,0,0.5);
-  padding: 0.4rem 0.75rem;
-  border-radius: 6px;
-}
-
-.legend-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 3px;
-}
-
-.sun-dot { background: var(--sun); box-shadow: 0 0 6px var(--sun); }
-.orbit-path-dot { background: rgba(255,255,255,0.25); }
-.arc-dot { background: var(--orbit); box-shadow: 0 0 6px var(--orbit); }
 
 /* ── Journey Log ──────────────────────────────────────── */
 .log-section {
@@ -478,4 +498,8 @@ footer {
   .scale-bar-container { grid-template-columns: 70px 1fr 90px; }
   .control-panel { flex-direction: column; align-items: flex-start; }
   .upload-actions { flex-direction: column; align-items: flex-start; }
+  .viz-grid { grid-template-columns: 1fr; }
+  .viz-panel-wide { grid-column: 1; }
+  .canvas-wide { aspect-ratio: 2 / 1; }
+  .viz-panel-sub { display: none; }
 }

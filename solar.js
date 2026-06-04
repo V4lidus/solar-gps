@@ -270,173 +270,511 @@ function processRoute(points) {
   };
 }
 
-// ── Canvas Renderer ──────────────────────────────────────────────────────────
+// ── Canvas Renderers ─────────────────────────────────────────────────────────
 
-class SolarRenderer {
+// Shared seeded starfield (deterministic, cached per seed)
+const _STAR_CACHE = new Map();
+function _drawStarfield(ctx, W, H, count, seed) {
+  const key = `${seed}-${count}`;
+  if (!_STAR_CACHE.has(key)) {
+    const stars = [];
+    let s = seed;
+    const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0xffffffff; };
+    for (let i = 0; i < count; i++) {
+      stars.push({ x: rand(), y: rand(), r: rand() * 1.4 + 0.2, a: rand() * 0.55 + 0.15 });
+    }
+    _STAR_CACHE.set(key, stars);
+  }
+  ctx.save();
+  for (const s of _STAR_CACHE.get(key)) {
+    ctx.beginPath();
+    ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${s.a})`;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Shared canvas setup helper
+function _initCanvas(canvas) {
+  const ctx = canvas.getContext('2d');
+  let W = 1, H = 1;
+  function resize() {
+    const rect = canvas.parentElement?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = rect.width  * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    W = rect.width;
+    H = rect.height;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+  return { ctx, getW: () => W, getH: () => H };
+}
+
+// ── Orbital Arc Renderer ─────────────────────────────────────────────────────
+// Dynamically zooms so the arc is always visible regardless of duration.
+// For a 48-min walk the arc is only 0.028° of the full orbit — invisible at
+// full-orbit scale — so we zoom in until the arc spans at least ~18% of canvas.
+
+class OrbitalRenderer {
   constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.angleRad = 0;    // how far Earth swept on its orbit
-    this.startAngle = Math.PI * 1.1; // starting position on orbit circle
-    this.animFrame = null;
-    this.animProgress = 0;
+    this._c = _initCanvas(canvas);
     this.targetAngle = 0;
-    this._resize();
-    window.addEventListener('resize', () => this._resize());
+    this.animAngle   = 0;
     this._loop();
   }
 
-  _resize() {
-    const rect = this.canvas.parentElement.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = rect.width * dpr;
-    this.canvas.height = rect.height * dpr;
-    this.ctx.scale(dpr, dpr);
-    this.W = rect.width;
-    this.H = rect.height;
-  }
-
-  setAngle(rad) {
-    this.targetAngle = Math.min(rad, Math.PI * 1.95); // cap at ~350 degrees
+  setValues(orbitalAngleRad) {
+    this.targetAngle = Math.min(orbitalAngleRad, Math.PI * 1.95);
   }
 
   _loop() {
-    this.animProgress += (this.targetAngle - this.animProgress) * 0.08;
-    this._draw(this.animProgress);
+    this.animAngle += (this.targetAngle - this.animAngle) * 0.06;
+    const { getW, getH } = this._c;
+    if (getW() > 1) this._draw(this.animAngle, getW(), getH());
     requestAnimationFrame(() => this._loop());
   }
 
-  _draw(arcAngle) {
-    const ctx = this.ctx;
-    const W = this.W, H = this.H;
-    const cx = W * 0.5;
-    const cy = H * 0.5;
-    const orbitR = Math.min(W, H) * 0.38;
-    const sunR = Math.min(W, H) * 0.06;
-    const earthR = 6;
-
+  _draw(angle, W, H) {
+    const { ctx } = this._c;
     ctx.clearRect(0, 0, W, H);
+    _drawStarfield(ctx, W, H, 70, 42);
 
-    // Starfield
-    this._drawStars(W, H);
+    const START = Math.PI * 1.1;
+    const end   = START + angle;
+    const mid   = START + angle / 2;
 
-    // Orbit ring (full ellipse, faint)
+    // Zoom so the arc always fills ≥18% of the smaller canvas dimension.
+    // For angle=0 show a fixed default view (0.4 rad of orbit).
+    const MIN_ARC_PX = Math.min(W, H) * 0.18;
+    const orbitR = angle > 1e-9
+      ? Math.max(MIN_ARC_PX / angle, Math.min(W, H) * 0.35)
+      : Math.min(W, H) * 0.38;
+
+    // How much of the orbit arc fits inside the canvas at this zoom
+    const halfChord = Math.min(W, H) * 0.44;
+    const viewAngle = angle > 1e-9
+      ? 2 * Math.asin(Math.min(halfChord / orbitR, 0.9999))
+      : 0.4;
+
+    // Keep the arc midpoint at canvas centre
+    const cx = W * 0.5 - orbitR * Math.cos(mid);
+    const cy = H * 0.5 - orbitR * Math.sin(mid);
+
+    // Faint dashed orbit track (only visible portion)
     ctx.beginPath();
-    ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 6]);
+    ctx.arc(cx, cy, orbitR, mid - viewAngle / 2, mid + viewAngle / 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 8]);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Sun
-    const sunGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunR * 1.5);
-    sunGrad.addColorStop(0, '#fff7cc');
-    sunGrad.addColorStop(0.3, '#ffd700');
-    sunGrad.addColorStop(0.7, '#ff9500');
-    sunGrad.addColorStop(1, 'transparent');
-    ctx.beginPath();
-    ctx.arc(cx, cy, sunR * 1.5, 0, Math.PI * 2);
-    ctx.fillStyle = sunGrad;
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, sunR, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffd700';
-    ctx.fill();
-
-    // Sun label
-    ctx.fillStyle = 'rgba(255,215,0,0.6)';
-    ctx.font = `bold ${Math.max(10, sunR * 0.7)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText('Sun', cx, cy + sunR + 14);
-
-    // Earth journey arc (orange glow)
-    if (arcAngle > 0.001) {
-      const arcStart = this.startAngle;
-      const arcEnd = arcStart + arcAngle;
-
-      // Glowing trail
+    // Journey arc
+    if (angle > 1e-9) {
       ctx.beginPath();
-      ctx.arc(cx, cy, orbitR, arcStart, arcEnd);
+      ctx.arc(cx, cy, orbitR, START, end);
       ctx.strokeStyle = '#ff7c43';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3.5;
       ctx.shadowColor = '#ff7c43';
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 12;
       ctx.stroke();
       ctx.shadowBlur = 0;
+    }
 
-      // Start marker (small dot)
-      const sx = cx + orbitR * Math.cos(arcStart);
-      const sy = cy + orbitR * Math.sin(arcStart);
+    // Start dot
+    const sx = cx + orbitR * Math.cos(START);
+    const sy = cy + orbitR * Math.sin(START);
+    ctx.beginPath();
+    ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = angle > 1e-9 ? 'rgba(255,124,67,0.85)' : '#4a9eff';
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Start', sx, sy - 10);
+
+    // Earth dot at current position
+    const ex = cx + orbitR * Math.cos(end);
+    const ey = cy + orbitR * Math.sin(end);
+    if (angle > 1e-9) {
+      const glow = ctx.createRadialGradient(ex, ey, 0, ex, ey, 16);
+      glow.addColorStop(0, 'rgba(74,158,255,0.45)');
+      glow.addColorStop(1, 'transparent');
       ctx.beginPath();
-      ctx.arc(sx, sy, 5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,124,67,0.5)';
+      ctx.arc(ex, ey, 16, 0, Math.PI * 2);
+      ctx.fillStyle = glow;
       ctx.fill();
-
-      // Start label
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      const startLabelX = cx + (orbitR + 18) * Math.cos(arcStart);
-      const startLabelY = cy + (orbitR + 18) * Math.sin(arcStart);
-      ctx.fillText('Start', startLabelX, startLabelY);
-
-      // Current Earth position
-      const ex = cx + orbitR * Math.cos(arcEnd);
-      const ey = cy + orbitR * Math.sin(arcEnd);
-
-      // Earth glow
-      const earthGlow = ctx.createRadialGradient(ex, ey, 0, ex, ey, 18);
-      earthGlow.addColorStop(0, 'rgba(74,158,255,0.4)');
-      earthGlow.addColorStop(1, 'transparent');
       ctx.beginPath();
-      ctx.arc(ex, ey, 18, 0, Math.PI * 2);
-      ctx.fillStyle = earthGlow;
-      ctx.fill();
-
-      // Earth
-      ctx.beginPath();
-      ctx.arc(ex, ey, earthR, 0, Math.PI * 2);
+      ctx.arc(ex, ey, 6, 0, Math.PI * 2);
       ctx.fillStyle = '#4a9eff';
       ctx.fill();
-
-      // Earth label
       ctx.fillStyle = '#4a9eff';
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
-      const labelOffset = earthR + 14;
-      const labelAngle = arcEnd + (arcEnd > Math.PI * 1.5 ? -0.3 : 0.3);
-      ctx.fillText('Now', ex + labelOffset * Math.cos(labelAngle) * 0.5, ey - labelOffset);
+      ctx.fillText('Now', ex, ey - 12);
     } else {
-      // Default Earth position when no tracking
-      const ex = cx + orbitR * Math.cos(this.startAngle);
-      const ey = cy + orbitR * Math.sin(this.startAngle);
       ctx.beginPath();
-      ctx.arc(ex, ey, earthR, 0, Math.PI * 2);
+      ctx.arc(ex, ey, 6, 0, Math.PI * 2);
       ctx.fillStyle = '#4a9eff';
       ctx.fill();
     }
-  }
 
-  _drawStars(W, H) {
-    // Seeded star positions (deterministic)
-    if (!this._stars) {
-      this._stars = [];
-      const seed = 42;
-      let s = seed;
-      const rand = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
-      for (let i = 0; i < 120; i++) {
-        this._stars.push({ x: rand(), y: rand(), r: rand() * 1.5 + 0.3, a: rand() * 0.6 + 0.2 });
-      }
+    // Sun: draw it if on-screen, otherwise show a directional arrow
+    const sunOnScreen = cx > -30 && cx < W + 30 && cy > -30 && cy < H + 30;
+    if (!sunOnScreen) {
+      const dx = cx - W / 2, dy = cy - H / 2;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      const reach = Math.min(W, H) * 0.26;
+      const ax = W / 2 + (dx / d) * reach;
+      const ay = H / 2 + (dy / d) * reach;
+      ctx.fillStyle = 'rgba(255,215,0,0.8)';
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('☀', ax, ay + 4);
+      ctx.fillStyle = 'rgba(255,215,0,0.45)';
+      ctx.font = '9px sans-serif';
+      ctx.fillText('Sun →', ax, ay + 16);
+    } else {
+      const sr = Math.min(W, H) * 0.07;
+      const g  = ctx.createRadialGradient(cx, cy, 0, cx, cy, sr * 1.6);
+      g.addColorStop(0, '#fff7cc');
+      g.addColorStop(0.35, '#ffd700');
+      g.addColorStop(0.7, '#ff9500');
+      g.addColorStop(1, 'transparent');
+      ctx.beginPath();
+      ctx.arc(cx, cy, sr * 1.6, 0, Math.PI * 2);
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, cy, sr, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd700';
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,215,0,0.6)';
+      ctx.font = `bold ${Math.max(9, sr * 0.6)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('Sun', cx, cy + sr + 13);
     }
-    this.ctx.save();
-    for (const star of this._stars) {
-      this.ctx.beginPath();
-      this.ctx.arc(star.x * W, star.y * H, star.r, 0, Math.PI * 2);
-      this.ctx.fillStyle = `rgba(255,255,255,${star.a})`;
-      this.ctx.fill();
-    }
-    this.ctx.restore();
+
+    // Info bar
+    const pct    = (angle / (2 * Math.PI)) * 100;
+    const pctStr = pct < 0.0001 ? pct.toExponential(2) + '%'
+                 : pct < 0.01   ? pct.toFixed(5) + '%'
+                 :                 pct.toFixed(3) + '%';
+    const zoom = Math.max(1, Math.round(orbitR / (Math.min(W, H) * 0.38)));
+
+    ctx.fillStyle = 'rgba(8,8,18,0.75)';
+    ctx.fillRect(0, H - 36, W, 36);
+    ctx.fillStyle = '#ff7c43';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${pctStr} of full orbit`, 10, H - 20);
+    ctx.fillStyle = 'rgba(255,255,255,0.32)';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(zoom > 1 ? `${zoom}× zoom to show arc` : 'Full orbit view', 10, H - 7);
   }
 }
+
+// ── Earth Rotation Renderer ──────────────────────────────────────────────────
+// Top-down (north-pole) view of Earth. Shows how far Earth has rotated during
+// the journey. 48 min = 12° of rotation — clearly visible at this scale.
+
+class RotationRenderer {
+  constructor(canvas) {
+    this._c = _initCanvas(canvas);
+    this.targetAngle = 0;
+    this.animAngle   = 0;
+    this.latitude    = 0;
+    this._loop();
+  }
+
+  setValues(rotationAngleRad, latitudeDeg) {
+    this.targetAngle = Math.min(rotationAngleRad, Math.PI * 1.95);
+    this.latitude    = latitudeDeg || 0;
+  }
+
+  _loop() {
+    this.animAngle += (this.targetAngle - this.animAngle) * 0.06;
+    const { getW, getH } = this._c;
+    if (getW() > 1) this._draw(this.animAngle, this.latitude, getW(), getH());
+    requestAnimationFrame(() => this._loop());
+  }
+
+  _draw(angle, latDeg, W, H) {
+    const { ctx } = this._c;
+    ctx.clearRect(0, 0, W, H);
+    _drawStarfield(ctx, W, H, 50, 99);
+
+    const cx = W * 0.5, cy = H * 0.5;
+    const earthR  = Math.min(W, H) * 0.36;
+    const latRad  = (latDeg * Math.PI) / 180;
+    const arcR    = Math.abs(latDeg) > 3 ? earthR * Math.cos(latRad) : earthR;
+
+    // Earth disc (night side shading)
+    const eg = ctx.createRadialGradient(cx - earthR * 0.25, cy - earthR * 0.25, 0, cx, cy, earthR);
+    eg.addColorStop(0, '#1e4a7a');
+    eg.addColorStop(0.55, '#0d2a50');
+    eg.addColorStop(1, '#060e20');
+    ctx.beginPath();
+    ctx.arc(cx, cy, earthR, 0, Math.PI * 2);
+    ctx.fillStyle = eg;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(74,158,255,0.22)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Equator ring (faint)
+    ctx.beginPath();
+    ctx.arc(cx, cy, earthR, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+
+    // Latitude circle
+    if (Math.abs(latDeg) > 3 && Math.abs(latDeg) < 87) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, arcR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Rotation arc — Earth spins counterclockwise from north pole view,
+    // but we show it clockwise in canvas coords for clarity (direction label explains)
+    const START_A = -Math.PI / 2; // top = North
+    const endA    = START_A + angle;
+
+    if (angle > 0.001) {
+      // Filled sector
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, arcR, START_A, endA);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(79,255,176,0.1)';
+      ctx.fill();
+
+      // Arc edge
+      ctx.beginPath();
+      ctx.arc(cx, cy, arcR, START_A, endA);
+      ctx.strokeStyle = '#4fffb0';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#4fffb0';
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Spoke lines
+      const spoke = (a, alpha) => {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + arcR * Math.cos(a), cy + arcR * Math.sin(a));
+        ctx.strokeStyle = `rgba(79,255,176,${alpha})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      };
+      spoke(START_A, 0.35);
+      spoke(endA, 0.7);
+
+      // Current position dot
+      const px = cx + arcR * Math.cos(endA);
+      const py = cy + arcR * Math.sin(endA);
+      ctx.beginPath();
+      ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#4fffb0';
+      ctx.shadowColor = '#4fffb0';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#4fffb0';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      const nl = arcR + 16;
+      ctx.fillText('Now', cx + nl * Math.cos(endA), cy + nl * Math.sin(endA));
+    }
+
+    // Compass labels
+    ctx.fillStyle = 'rgba(255,255,255,0.38)';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    const cp = earthR + 14;
+    ctx.fillText('N', cx, cy - cp + 4);
+    ctx.fillText('S', cx, cy + cp + 4);
+    ctx.fillText('E', cx + cp, cy + 4);
+    ctx.fillText('W', cx - cp, cy + 4);
+
+    // Lat label
+    if (Math.abs(latDeg) > 3) {
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${Math.abs(latDeg).toFixed(1)}°${latDeg >= 0 ? 'N' : 'S'}`, W - 8, 14);
+    }
+
+    // Info bar
+    const pct    = (angle / (2 * Math.PI)) * 100;
+    const pctStr = pct < 0.01 ? pct.toFixed(4) + '%' : pct.toFixed(2) + '%';
+
+    ctx.fillStyle = 'rgba(8,8,18,0.75)';
+    ctx.fillRect(0, H - 36, W, 36);
+    ctx.fillStyle = '#4fffb0';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${pctStr} of full rotation`, 10, H - 20);
+    ctx.fillStyle = 'rgba(255,255,255,0.32)';
+    ctx.font = '9px sans-serif';
+    ctx.fillText('North-pole view · full rotation = 24 h', 10, H - 7);
+  }
+}
+
+// ── Galactic Trail Renderer ──────────────────────────────────────────────────
+// Linear trail showing how far the Solar System travelled through the Milky Way.
+// The arc angle of the galactic orbit is ≈0 for any reasonable journey, so we
+// visualise the raw km distance against a scale bar with reference markers.
+
+class GalacticRenderer {
+  constructor(canvas) {
+    this._c = _initCanvas(canvas);
+    this.targetKm = 0;
+    this.animKm   = 0;
+    this._loop();
+  }
+
+  setValues(galacticKm) {
+    this.targetKm = galacticKm;
+  }
+
+  _loop() {
+    this.animKm += (this.targetKm - this.animKm) * 0.06;
+    const { getW, getH } = this._c;
+    if (getW() > 1) this._draw(this.animKm, getW(), getH());
+    requestAnimationFrame(() => this._loop());
+  }
+
+  _draw(km, W, H) {
+    const { ctx } = this._c;
+    ctx.clearRect(0, 0, W, H);
+
+    // Starfield with horizontal motion streaks
+    _drawStarfield(ctx, W, H, 65, 77);
+    ctx.save();
+    let rs = 9999;
+    const rr = () => { rs = (rs * 1664525 + 1013904223) >>> 0; return rs / 0xffffffff; };
+    for (let i = 0; i < 22; i++) {
+      const x = rr() * W, y = rr() * H;
+      const len = rr() * 18 + 5;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - len, y);
+      ctx.strokeStyle = `rgba(255,255,255,${rr() * 0.2 + 0.04})`;
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Scale: choose a round reference that fits nicely
+    const MOON = 384_400;
+    const AU   = 149_597_870;
+    let scaleMax = MOON;
+    if (km > AU)        scaleMax = km * 1.25;
+    else if (km > MOON) scaleMax = AU   * 1.15;
+    else                scaleMax = MOON * 1.15;
+
+    const refs = [
+      { km: MOON, label: 'Moon (384k km)', color: 'rgba(200,200,220,0.55)' },
+      { km: AU,   label: '1 AU · Sun',     color: 'rgba(255,215,0,0.5)'   },
+    ];
+
+    // Track geometry
+    const ty = H * 0.52;
+    const th = Math.max(10, Math.min(H * 0.1, 14));
+    const tx0 = W * 0.06, tx1 = W * 0.94;
+    const tw  = tx1 - tx0;
+    const toX = k => tx0 + (k / scaleMax) * tw;
+
+    // Track background
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.beginPath();
+    ctx.roundRect(tx0, ty - th / 2, tw, th, 4);
+    ctx.fill();
+
+    // Reference markers
+    for (const ref of refs) {
+      if (ref.km > scaleMax * 1.02) continue;
+      const rx = toX(ref.km);
+      ctx.beginPath();
+      ctx.moveTo(rx, ty - th - 2);
+      ctx.lineTo(rx, ty + th + 2);
+      ctx.strokeStyle = ref.color;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = ref.color;
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(ref.label, rx, ty - th - 6);
+    }
+
+    // Filled trail
+    const trailX = Math.min(toX(km), tx1 - 4);
+    if (km > 0) {
+      const tg = ctx.createLinearGradient(tx0, 0, trailX, 0);
+      tg.addColorStop(0, 'rgba(180,122,255,0.25)');
+      tg.addColorStop(1, '#b47aff');
+      ctx.beginPath();
+      ctx.roundRect(tx0, ty - th / 2, Math.max(trailX - tx0, 4), th, 4);
+      ctx.fillStyle = tg;
+      ctx.fill();
+    }
+
+    // Solar system dot
+    const dx = Math.max(trailX, tx0 + 10);
+    const glow = ctx.createRadialGradient(dx, ty, 0, dx, ty, 22);
+    glow.addColorStop(0, 'rgba(180,122,255,0.55)');
+    glow.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(dx, ty, 22, 0, Math.PI * 2);
+    ctx.fillStyle = glow;
+    ctx.fill();
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('☀', dx, ty + 5);
+
+    // Distance label above dot
+    if (km > 0) {
+      ctx.fillStyle = '#b47aff';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(formatKm(km), dx, ty - 26);
+    }
+
+    // Axis start/end labels
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Start', tx0, ty + th + 14);
+    ctx.textAlign = 'right';
+    ctx.fillText(formatKm(scaleMax), tx1, ty + th + 14);
+
+    // Galactic orbit context — show % only when it's meaningful (long journeys)
+    const galPct = (km / (SOLAR.GALACTIC_SPEED_KMS * 225e6 * 365.25 * 86400)) * 100;
+
+    // Info bar
+    ctx.fillStyle = 'rgba(8,8,18,0.75)';
+    ctx.fillRect(0, H - 36, W, 36);
+    ctx.fillStyle = '#b47aff';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(km > 0 ? `${formatKm(km)} through the Milky Way` : 'Galactic trail', 10, H - 20);
+    ctx.fillStyle = 'rgba(255,255,255,0.32)';
+    ctx.font = '9px sans-serif';
+    ctx.fillText('Solar System speed: ~220 km/s', 10, H - 7);
+  }
+}
+
