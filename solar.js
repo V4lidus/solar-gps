@@ -519,25 +519,15 @@ const LAND_POLYGONS = [
    [174,-36],[172,-38],[170,-42],[166,-46]],
 ];
 
-// Real land-polygon rings loaded async from Natural Earth 110m TopoJSON.
-// Falls back to LAND_POLYGONS if CDN or topojson-client is unavailable.
+// Real land-polygon rings: Natural Earth 110m data pre-processed to [lon,lat] rings.
+// land-rings.json is committed to the repo — no CDN dependency.
 let _geoRings = null;
 
 async function _fetchLandData() {
   if (_geoRings) return;
-  if (typeof topojson === 'undefined') { _geoRings = LAND_POLYGONS; return; }
   try {
-    const r    = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json');
-    const topo = await r.json();
-    const feat = topojson.feature(topo, topo.objects.land);
-    const rings = [];
-    const geom  = feat.geometry;
-    if (geom.type === 'MultiPolygon') {
-      for (const poly of geom.coordinates) rings.push(poly[0]);
-    } else if (geom.type === 'Polygon') {
-      rings.push(geom.coordinates[0]);
-    }
-    _geoRings = rings;
+    const r = await fetch('land-rings.json');
+    _geoRings = await r.json();
   } catch (_) {
     _geoRings = LAND_POLYGONS;
   }
