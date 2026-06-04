@@ -315,6 +315,38 @@ function _initCanvas(canvas) {
   return { ctx, getW: () => W, getH: () => H };
 }
 
+// Pinch-to-zoom helper — call once per renderer canvas.
+// getZoom/setZoom read and write the renderer's userZoom.
+// setZoom receives the unclamped value; caller should clamp to its own limits.
+function _addPinchZoom(canvas, getZoom, setZoom) {
+  let startDist = null;
+  let startZoom = null;
+
+  const dist = t => {
+    const dx = t[0].clientX - t[1].clientX;
+    const dy = t[0].clientY - t[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      startDist = dist(e.touches);
+      startZoom = getZoom();
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', e => {
+    if (e.touches.length === 2 && startDist) {
+      e.preventDefault();
+      setZoom(startZoom * dist(e.touches) / startDist);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend',    () => { startDist = null; startZoom = null; });
+  canvas.addEventListener('touchcancel', () => { startDist = null; startZoom = null; });
+}
+
 // ── Orbital Arc Renderer ─────────────────────────────────────────────────────
 // Dynamically zooms so the arc is always visible regardless of duration.
 // For a 48-min walk the arc is only 0.028° of the full orbit — invisible at
@@ -330,6 +362,7 @@ class OrbitalRenderer {
       e.preventDefault();
       e.deltaY < 0 ? this.zoomIn() : this.zoomOut();
     }, { passive: false });
+    _addPinchZoom(canvas, () => this.userZoom, z => { this.userZoom = Math.max(0.05, Math.min(200, z)); });
     this._loop();
   }
 
@@ -560,6 +593,7 @@ class RotationRenderer {
       e.preventDefault();
       e.deltaY < 0 ? this.zoomIn() : this.zoomOut();
     }, { passive: false });
+    _addPinchZoom(canvas, () => this.userZoom, z => { this.userZoom = Math.max(0.2, Math.min(8, z)); });
     _fetchLandData();
     this._loop();
   }
@@ -775,6 +809,7 @@ class GalacticRenderer {
       e.preventDefault();
       e.deltaY < 0 ? this.zoomIn() : this.zoomOut();
     }, { passive: false });
+    _addPinchZoom(canvas, () => this.userZoom, z => { this.userZoom = Math.max(0.05, Math.min(100, z)); });
     this._loop();
   }
 
