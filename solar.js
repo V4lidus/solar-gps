@@ -315,36 +315,68 @@ function _initCanvas(canvas) {
   return { ctx, getW: () => W, getH: () => H };
 }
 
-// Pinch-to-zoom helper — call once per renderer canvas.
-// getZoom/setZoom read and write the renderer's userZoom.
-// setZoom receives the unclamped value; caller should clamp to its own limits.
-function _addPinchZoom(canvas, getZoom, setZoom) {
-  let startDist = null;
-  let startZoom = null;
+// Unified pan + pinch-zoom + wheel interaction helper.
+// onPan(dx, dy)  — called on mouse drag or single-finger touch drag
+// getZoom()      — returns current userZoom
+// setZoom(z)     — sets userZoom (caller responsible for clamping)
+function _addInteractions(canvas, { onPan, getZoom, setZoom }) {
+  // touch-action:none must be set in CSS; that's what stops the browser
+  // from intercepting the gesture at the OS level before JS sees it.
 
-  const dist = t => {
+  const tdist = t => {
     const dx = t[0].clientX - t[1].clientX;
     const dy = t[0].clientY - t[1].clientY;
     return Math.sqrt(dx * dx + dy * dy);
   };
 
+  // ── Mouse drag ────────────────────────────────────────
+  let mlx = 0, mly = 0, mdrag = false;
+  canvas.style.cursor = 'grab';
+  canvas.addEventListener('mousedown', e => {
+    mdrag = true; mlx = e.clientX; mly = e.clientY;
+    canvas.style.cursor = 'grabbing'; e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!mdrag) return;
+    onPan(e.clientX - mlx, e.clientY - mly);
+    mlx = e.clientX; mly = e.clientY;
+  });
+  window.addEventListener('mouseup', () => { if (mdrag) { mdrag = false; canvas.style.cursor = 'grab'; } });
+
+  // ── Wheel zoom ────────────────────────────────────────
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    setZoom(getZoom() * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+  }, { passive: false });
+
+  // ── Touch: 1-finger pan + 2-finger pinch ─────────────
+  let tlx = 0, tly = 0, pd0 = null, pz0 = null;
+
   canvas.addEventListener('touchstart', e => {
-    if (e.touches.length === 2) {
+    if (e.touches.length === 1) {
+      tlx = e.touches[0].clientX; tly = e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
       e.preventDefault();
-      startDist = dist(e.touches);
-      startZoom = getZoom();
+      pd0 = tdist(e.touches); pz0 = getZoom();
     }
   }, { passive: false });
 
   canvas.addEventListener('touchmove', e => {
-    if (e.touches.length === 2 && startDist) {
-      e.preventDefault();
-      setZoom(startZoom * dist(e.touches) / startDist);
+    e.preventDefault();
+    if (e.touches.length === 1 && pd0 === null) {
+      onPan(e.touches[0].clientX - tlx, e.touches[0].clientY - tly);
+      tlx = e.touches[0].clientX; tly = e.touches[0].clientY;
+    } else if (e.touches.length === 2 && pd0 !== null) {
+      setZoom(pz0 * tdist(e.touches) / pd0);
     }
   }, { passive: false });
 
-  canvas.addEventListener('touchend',    () => { startDist = null; startZoom = null; });
-  canvas.addEventListener('touchcancel', () => { startDist = null; startZoom = null; });
+  const endPinch = e => {
+    if (!e || e.touches.length < 2) { pd0 = null; pz0 = null; }
+    if (e && e.touches.length === 1) { tlx = e.touches[0].clientX; tly = e.touches[0].clientY; }
+  };
+  canvas.addEventListener('touchend',    endPinch);
+  canvas.addEventListener('touchcancel', endPinch);
 }
 
 // ── Orbital Arc Renderer ─────────────────────────────────────────────────────
@@ -358,11 +390,13 @@ class OrbitalRenderer {
     this.targetAngle = 0;
     this.animAngle   = 0;
     this.userZoom    = 1.0;
-    canvas.addEventListener('wheel', e => {
-      e.preventDefault();
-      e.deltaY < 0 ? this.zoomIn() : this.zoomOut();
-    }, { passive: false });
-    _addPinchZoom(canvas, () => this.userZoom, z => { this.userZoom = Math.max(0.05, Math.min(200, z)); });
+    this.panX        = 0;
+    this.panY        = 0;
+    _addInteractions(canvas, {
+      onPan:   (dx, dy) => { this.panX += dx; this.panY += dy; },
+      getZoom: () => this.userZoom,
+      setZoom: z => { this.userZoom = Math.max(0.05, Math.min(200, z)); },
+    });
     this._loop();
   }
 
@@ -372,7 +406,7 @@ class OrbitalRenderer {
 
   zoomIn()    { this.userZoom = Math.min(this.userZoom * 1.5, 200); }
   zoomOut()   { this.userZoom = Math.max(this.userZoom / 1.5, 0.05); }
-  resetZoom() { this.userZoom = 1.0; }
+  resetZoom() { this.userZoom = 1.0; this.panX = 0; this.panY = 0; }
 
   _loop() {
     this.animAngle += (this.targetAngle - this.animAngle) * 0.06;
@@ -403,9 +437,9 @@ class OrbitalRenderer {
       ? 2 * Math.asin(Math.min(halfChord / orbitR, 0.9999))
       : 0.4;
 
-    // Keep the arc midpoint at canvas centre
-    const cx = W * 0.5 - orbitR * Math.cos(mid);
-    const cy = H * 0.5 - orbitR * Math.sin(mid);
+    // Keep the arc midpoint at canvas centre, offset by pan
+    const cx = W * 0.5 + this.panX - orbitR * Math.cos(mid);
+    const cy = H * 0.5 + this.panY - orbitR * Math.sin(mid);
 
     // Faint dashed orbit track (only visible portion)
     ctx.beginPath();
@@ -589,11 +623,14 @@ class RotationRenderer {
     this.latitude    = 51.5;
     this.longitude   = 0;
     this.userZoom    = 1.0;
-    canvas.addEventListener('wheel', e => {
-      e.preventDefault();
-      e.deltaY < 0 ? this.zoomIn() : this.zoomOut();
-    }, { passive: false });
-    _addPinchZoom(canvas, () => this.userZoom, z => { this.userZoom = Math.max(0.2, Math.min(8, z)); });
+    this.lonOffset   = 0;   // degrees — added to C0 so user can spin the globe
+    this._lastR      = 100; // last rendered globe radius in px, for drag conversion
+    _addInteractions(canvas, {
+      // Horizontal drag spins the globe; vertical drag is ignored
+      onPan:   (dx) => { this.lonOffset -= dx * (180 / (Math.PI * this._lastR)); },
+      getZoom: () => this.userZoom,
+      setZoom: z => { this.userZoom = Math.max(0.2, Math.min(8, z)); },
+    });
     _fetchLandData();
     this._loop();
   }
@@ -606,7 +643,7 @@ class RotationRenderer {
 
   zoomIn()    { this.userZoom = Math.min(this.userZoom * 1.5, 8); }
   zoomOut()   { this.userZoom = Math.max(this.userZoom / 1.5, 0.2); }
-  resetZoom() { this.userZoom = 1.0; }
+  resetZoom() { this.userZoom = 1.0; this.lonOffset = 0; }
 
   _loop() {
     this.animAngle += (this.targetAngle - this.animAngle) * 0.06;
@@ -622,10 +659,11 @@ class RotationRenderer {
 
     const cx = W * 0.5, cy = H * 0.5;
     const R  = Math.min(W, H) * 0.40 * this.userZoom;
+    this._lastR = R; // used by drag handler to convert pixels → degrees
 
     // Earth rotates eastward. From a fixed point in space, the visible face's
     // central longitude decreases as time passes: currCLon = C0 - rotDeg.
-    const C0      = lonDeg;          // user's longitude = center of start view
+    const C0      = lonDeg + this.lonOffset; // lonOffset lets user spin the globe
     const rotDeg  = angle * 180 / Math.PI;
     const currCLon = C0 - rotDeg;
 
@@ -805,11 +843,12 @@ class GalacticRenderer {
     this.targetKm = 0;
     this.animKm   = 0;
     this.userZoom = 1.0;
-    canvas.addEventListener('wheel', e => {
-      e.preventDefault();
-      e.deltaY < 0 ? this.zoomIn() : this.zoomOut();
-    }, { passive: false });
-    _addPinchZoom(canvas, () => this.userZoom, z => { this.userZoom = Math.max(0.05, Math.min(100, z)); });
+    this.panX     = 0;
+    _addInteractions(canvas, {
+      onPan:   (dx) => { this.panX += dx; },
+      getZoom: () => this.userZoom,
+      setZoom: z => { this.userZoom = Math.max(0.05, Math.min(100, z)); },
+    });
     this._loop();
   }
 
@@ -819,7 +858,7 @@ class GalacticRenderer {
 
   zoomIn()    { this.userZoom = Math.min(this.userZoom * 1.5, 100); }
   zoomOut()   { this.userZoom = Math.max(this.userZoom / 1.5, 0.05); }
-  resetZoom() { this.userZoom = 1.0; }
+  resetZoom() { this.userZoom = 1.0; this.panX = 0; }
 
   _loop() {
     this.animKm += (this.targetKm - this.animKm) * 0.06;
@@ -864,10 +903,10 @@ class GalacticRenderer {
       { km: AU,   label: '1 AU · Sun',     color: 'rgba(255,215,0,0.5)'   },
     ];
 
-    // Track geometry
+    // Track geometry — panX lets user slide left/right to explore the scale
     const ty = H * 0.52;
     const th = Math.max(10, Math.min(H * 0.1, 14));
-    const tx0 = W * 0.06, tx1 = W * 0.94;
+    const tx0 = W * 0.06 + this.panX, tx1 = W * 0.94 + this.panX;
     const tw  = tx1 - tx0;
     const toX = k => tx0 + (k / scaleMax) * tw;
 
