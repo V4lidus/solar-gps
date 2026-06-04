@@ -137,7 +137,66 @@ function generateFacts(earthMeters, orbitalKm, galacticKm, elapsedSeconds) {
   return facts;
 }
 
-// ── GPX Parsing ─────────────────────────────────────────────────────────────
+// ── Route File Parsing ───────────────────────────────────────────────────────
+
+/**
+ * Detect format from filename extension or XML root tag, then parse.
+ * Returns { points, name } — same shape from both parsers.
+ */
+function parseRouteFile(content, filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  if (ext === 'tcx') return parseTCX(content);
+  // Detect TCX by root element in case extension is missing/wrong
+  if (/<TrainingCenterDatabase[\s>]/.test(content)) return parseTCX(content);
+  return parseGPX(content);
+}
+
+/**
+ * Parse a TCX XML string (Garmin Training Center format).
+ * Skips trackpoints without <Position> (e.g. indoor pause markers).
+ */
+function parseTCX(xmlString) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlString, 'application/xml');
+
+  if (doc.querySelector('parsererror')) {
+    throw new Error('Invalid TCX file — could not parse XML.');
+  }
+
+  const trackpointEls = Array.from(doc.getElementsByTagName('Trackpoint'));
+  if (trackpointEls.length === 0) {
+    throw new Error('No trackpoints found. Make sure this is a valid TCX file.');
+  }
+
+  const points = trackpointEls
+    .map(el => {
+      const posEl = el.getElementsByTagName('Position')[0];
+      if (!posEl) return null; // indoor pauses have no position
+      const latEl = posEl.getElementsByTagName('LatitudeDegrees')[0];
+      const lonEl = posEl.getElementsByTagName('LongitudeDegrees')[0];
+      if (!latEl || !lonEl) return null;
+      const lat = parseFloat(latEl.textContent.trim());
+      const lon = parseFloat(lonEl.textContent.trim());
+      const timeEl = el.getElementsByTagName('Time')[0];
+      const timeMs = timeEl ? new Date(timeEl.textContent.trim()).getTime() : null;
+      return { lat, lon, timeMs };
+    })
+    .filter(p => p !== null && !isNaN(p.lat) && !isNaN(p.lon));
+
+  if (points.length < 2) {
+    throw new Error('TCX file needs at least 2 trackpoints with position data.');
+  }
+
+  // Name: prefer "Sport Activity" label, fall back to the activity Id timestamp
+  const activityEl = doc.getElementsByTagName('Activity')[0];
+  const sport = activityEl ? activityEl.getAttribute('Sport') : null;
+  const idEl = doc.getElementsByTagName('Id')[0];
+  const name = sport
+    ? `${sport} Activity`
+    : (idEl ? idEl.textContent.trim() : null);
+
+  return { points, name };
+}
 
 /**
  * Parse a GPX XML string into an array of {lat, lon, timeMs} points.

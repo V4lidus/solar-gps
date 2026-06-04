@@ -65,19 +65,21 @@ solar-gps/
 └── demo.gpx     — sample route: London South Bank Walk (Tower Bridge → London Eye, 3.7 km)
 ```
 
-## GPX file support
+## File format support
 
-The **Upload GPX** tab accepts `.gpx` files exported from any app that follows the GPX 1.0 or 1.1 standard:
+The **Upload GPX** tab accepts `.gpx` and `.tcx` files. Format is auto-detected from the file extension, with XML root-element fallback.
 
-| App | How to export |
-|---|---|
-| Strava | Activity page → ··· → Export GPX |
-| Garmin Connect | Activity → Export Original |
-| AllTrails | Completed hike → Export → GPX |
-| iPhone Health / Workouts | Use a third-party exporter app |
-| Google Maps Timeline | Google Takeout → Location History → Semantic Location History |
+| App | Format | How to export |
+|---|---|---|
+| Strava | GPX | Activity page → ··· → Export GPX |
+| Garmin Connect | GPX or TCX | Activity → Export Original |
+| Garmin devices (direct) | TCX | Copy `.tcx` from device storage |
+| AllTrails | GPX | Completed hike → Export → GPX |
+| Komoot | GPX | Tour → Download → GPX |
+| iPhone Health / Workouts | GPX | Use a third-party exporter app |
+| Google Maps Timeline | KML/JSON | Google Takeout → Location History |
 
-Files without timestamps (e.g. planned routes) are supported — elapsed time is estimated from distance at a walking pace (1.4 m/s).
+Files without timestamps (e.g. planned routes) are supported — elapsed time is estimated from distance at walking pace (1.4 m/s).
 
 ## Physics
 
@@ -89,6 +91,15 @@ Files without timestamps (e.g. planned routes) are supported — elapsed time is
 ---
 
 ## Changelog
+
+### v0.3 — TCX file support
+
+- Added `parseTCX` in `solar.js` — handles Garmin Training Center XML format
+- `parseRouteFile` dispatcher auto-detects GPX vs TCX from file extension, with XML root-tag fallback for misnamed files
+- Trackpoints without `<Position>` (indoor pauses, treadmill laps) are silently skipped
+- Activity name extracted from `Sport` attribute (`"Running Activity"`, etc.) or falls back to the `<Id>` timestamp
+- `fileInput` accept attribute and drop-zone hint text updated to show GPX + TCX
+- README export table extended with Garmin direct device export and Komoot
 
 ### v0.2 — GPX file upload + demo route
 

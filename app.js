@@ -241,7 +241,7 @@ clearFileBtn.addEventListener('click', () => {
 });
 
 fileInput.addEventListener('change', (e) => {
-  if (e.target.files[0]) readGPXFile(e.target.files[0]);
+  if (e.target.files[0]) readRouteFile(e.target.files[0]);
 });
 
 // Drag-and-drop
@@ -252,15 +252,15 @@ dropZone.addEventListener('drop', (e) => {
   e.preventDefault();
   dropZone.classList.remove('dragging');
   const file = e.dataTransfer.files[0];
-  if (file) readGPXFile(file);
+  if (file) readRouteFile(file);
 });
 
-function readGPXFile(file) {
+function readRouteFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const { points, name } = parseGPX(e.target.result);
-      loadRoute(points, name || file.name.replace(/\.gpx$/i, ''), false);
+      const { points, name } = parseRouteFile(e.target.result, file.name);
+      loadRoute(points, name || file.name.replace(/\.(gpx|tcx)$/i, ''), false);
     } catch (err) {
       showUploadError(err.message);
     }
