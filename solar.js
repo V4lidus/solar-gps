@@ -137,6 +137,80 @@ function generateFacts(earthMeters, orbitalKm, galacticKm, elapsedSeconds) {
   return facts;
 }
 
+// ── GPX Parsing ─────────────────────────────────────────────────────────────
+
+/**
+ * Parse a GPX XML string into an array of {lat, lon, timeMs} points.
+ * Tries trkpt → rtept → wpt in order. timeMs is null when absent.
+ */
+function parseGPX(xmlString) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlString, 'application/xml');
+
+  if (doc.querySelector('parsererror')) {
+    throw new Error('Invalid GPX file — could not parse XML.');
+  }
+
+  let pointEls = Array.from(doc.getElementsByTagName('trkpt'));
+  if (pointEls.length === 0) pointEls = Array.from(doc.getElementsByTagName('rtept'));
+  if (pointEls.length === 0) pointEls = Array.from(doc.getElementsByTagName('wpt'));
+
+  if (pointEls.length === 0) {
+    throw new Error('No track points found. Make sure this is a valid GPX file.');
+  }
+
+  const points = pointEls
+    .map(el => {
+      const lat = parseFloat(el.getAttribute('lat'));
+      const lon = parseFloat(el.getAttribute('lon'));
+      const timeEl = el.getElementsByTagName('time')[0];
+      const timeMs = timeEl ? new Date(timeEl.textContent.trim()).getTime() : null;
+      return { lat, lon, timeMs };
+    })
+    .filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+
+  if (points.length < 2) {
+    throw new Error('GPX file needs at least 2 valid points.');
+  }
+
+  // Extract route name from <trk><name> or <metadata><name>
+  const trkName = doc.getElementsByTagName('name')[0];
+  const name = trkName ? trkName.textContent.trim() : null;
+
+  return { points, name };
+}
+
+/**
+ * Process an array of {lat, lon, timeMs} points into route summary stats.
+ * If no timestamps present, estimates elapsed time from distance at walking pace.
+ */
+function processRoute(points) {
+  let totalMeters = 0;
+  for (let i = 1; i < points.length; i++) {
+    totalMeters += haversineMeters(
+      points[i - 1].lat, points[i - 1].lon,
+      points[i].lat, points[i].lon,
+    );
+  }
+
+  const hasTime = points.every(p => p.timeMs !== null && !isNaN(p.timeMs));
+  let elapsedSeconds;
+  if (hasTime) {
+    elapsedSeconds = (points[points.length - 1].timeMs - points[0].timeMs) / 1000;
+  } else {
+    // Estimate at average walking speed: 1.4 m/s
+    elapsedSeconds = totalMeters / 1.4;
+  }
+
+  return {
+    totalMeters,
+    elapsedSeconds: Math.max(elapsedSeconds, 1),
+    latitude: points[0].lat,
+    hasTime,
+    pointCount: points.length,
+  };
+}
+
 // ── Canvas Renderer ──────────────────────────────────────────────────────────
 
 class SolarRenderer {

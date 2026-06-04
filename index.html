@@ -16,9 +16,15 @@
   </header>
 
   <main>
-    <!-- Control Panel -->
-    <section class="control-panel">
-      <div class="tracking-status" id="trackingStatus">
+    <!-- Mode Tabs -->
+    <div class="mode-tabs">
+      <button class="mode-tab active" id="modeTabLive">Live GPS</button>
+      <button class="mode-tab" id="modeTabUpload">Upload GPX</button>
+    </div>
+
+    <!-- Live GPS Control Panel -->
+    <section class="control-panel" id="livePanel">
+      <div class="tracking-status">
         <div class="status-dot" id="statusDot"></div>
         <span id="statusLabel">Ready to track</span>
       </div>
@@ -29,6 +35,36 @@
       </div>
       <div class="accuracy-info" id="accuracyInfo" style="display:none">
         <span id="accuracyLabel"></span>
+      </div>
+    </section>
+
+    <!-- Upload GPX Panel -->
+    <section class="upload-panel" id="uploadPanel" style="display:none">
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-zone-icon">📍</div>
+        <p class="drop-zone-title">Drop a GPX file here</p>
+        <p class="drop-zone-sub">or <label class="file-label" for="fileInput">browse files</label></p>
+        <input type="file" id="fileInput" accept=".gpx,.kml" style="display:none" />
+        <p class="drop-zone-formats">Supports GPX 1.0 &amp; 1.1 — exported from Strava, Garmin, AllTrails, etc.</p>
+      </div>
+      <div class="upload-actions">
+        <button class="btn btn-secondary" id="demoBtn">Try Demo Route</button>
+        <span class="upload-divider">London South Bank Walk · 3.7km · 48 min</span>
+      </div>
+      <div class="file-info" id="fileInfo" style="display:none">
+        <div class="file-info-header">
+          <span class="file-info-icon">📁</span>
+          <span id="fileName"></span>
+        </div>
+        <div class="file-meta">
+          <span class="file-meta-item" id="filePoints"></span>
+          <span class="file-meta-item" id="fileDuration"></span>
+          <span class="file-meta-item" id="fileDistance"></span>
+          <span class="file-meta-item file-meta-warning" id="fileTimeWarning" style="display:none">
+            ⚠ No timestamps — elapsed time estimated at walking pace
+          </span>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="clearFileBtn">Load another file</button>
       </div>
     </section>
 
@@ -92,7 +128,7 @@
       <div class="fun-facts" id="funFacts"></div>
     </section>
 
-    <!-- 3D Visualization -->
+    <!-- Visualization -->
     <section class="viz-section">
       <h2>Earth's path during your journey</h2>
       <p class="viz-desc">The arc shows how far Earth moved in its solar orbit while you were travelling</p>

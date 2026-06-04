@@ -60,9 +60,24 @@ npx localtunnel --port 8080
 solar-gps/
 ├── index.html   — markup and layout
 ├── style.css    — dark space theme, responsive grid
-├── solar.js     — physics constants, distance calculations, canvas renderer
-└── app.js       — GPS tracking, UI updates, noise filtering, log
+├── solar.js     — physics constants, distance calculations, GPX parser, canvas renderer
+├── app.js       — GPS tracking, GPX upload, demo route, UI updates
+└── demo.gpx     — sample route: London South Bank Walk (Tower Bridge → London Eye, 3.7 km)
 ```
+
+## GPX file support
+
+The **Upload GPX** tab accepts `.gpx` files exported from any app that follows the GPX 1.0 or 1.1 standard:
+
+| App | How to export |
+|---|---|
+| Strava | Activity page → ··· → Export GPX |
+| Garmin Connect | Activity → Export Original |
+| AllTrails | Completed hike → Export → GPX |
+| iPhone Health / Workouts | Use a third-party exporter app |
+| Google Maps Timeline | Google Takeout → Location History → Semantic Location History |
+
+Files without timestamps (e.g. planned routes) are supported — elapsed time is estimated from distance at a walking pace (1.4 m/s).
 
 ## Physics
 
@@ -74,6 +89,15 @@ solar-gps/
 ---
 
 ## Changelog
+
+### v0.2 — GPX file upload + demo route
+
+- **Upload GPX** tab: drag-and-drop or browse for a `.gpx` file from Strava, Garmin, AllTrails, etc.
+- **GPX parser** (`parseGPX` / `processRoute` in `solar.js`): handles GPX 1.0 & 1.1, track points, route points, and waypoints; gracefully handles files with no timestamps
+- **Demo route**: built-in London South Bank Walk (Tower Bridge → London Eye, 3.7 km, 48 min) — try the site instantly with no GPS or file needed
+- `demo.gpx` file included in the repo as a download / format reference
+- Mode switcher between **Live GPS** and **Upload GPX** — switching modes resets the display
+- File info card shows point count, duration, distance, and a warning when timestamps are absent
 
 ### v0.1 — Initial release
 

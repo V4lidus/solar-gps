@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="SolarGPS Demo"
+     xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>London South Bank Walk</name>
+    <desc>A 3.7km walk from Tower Bridge to the London Eye along the Thames</desc>
+    <time>2024-06-04T08:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>London South Bank Walk</name>
+    <type>walking</type>
+    <trkseg>
+      <trkpt lat="51.50550" lon="-0.07540"><ele>6</ele><time>2024-06-04T08:00:00Z</time></trkpt>
+      <trkpt lat="51.50590" lon="-0.07750"><ele>6</ele><time>2024-06-04T08:02:00Z</time></trkpt>
+      <trkpt lat="51.50620" lon="-0.07960"><ele>7</ele><time>2024-06-04T08:04:00Z</time></trkpt>
+      <trkpt lat="51.50650" lon="-0.08170"><ele>7</ele><time>2024-06-04T08:06:00Z</time></trkpt>
+      <trkpt lat="51.50670" lon="-0.08380"><ele>6</ele><time>2024-06-04T08:08:00Z</time></trkpt>
+      <trkpt lat="51.50700" lon="-0.08610"><ele>6</ele><time>2024-06-04T08:10:00Z</time></trkpt>
+      <trkpt lat="51.50730" lon="-0.08840"><ele>5</ele><time>2024-06-04T08:12:00Z</time></trkpt>
+      <trkpt lat="51.50760" lon="-0.09080"><ele>5</ele><time>2024-06-04T08:14:00Z</time></trkpt>
+      <trkpt lat="51.50780" lon="-0.09320"><ele>5</ele><time>2024-06-04T08:16:00Z</time></trkpt>
+      <trkpt lat="51.50790" lon="-0.09550"><ele>5</ele><time>2024-06-04T08:18:00Z</time></trkpt>
+      <trkpt lat="51.50780" lon="-0.09750"><ele>6</ele><time>2024-06-04T08:20:00Z</time></trkpt>
+      <trkpt lat="51.50760" lon="-0.09930"><ele>6</ele><time>2024-06-04T08:22:00Z</time></trkpt>
+      <trkpt lat="51.50740" lon="-0.10120"><ele>6</ele><time>2024-06-04T08:24:00Z</time></trkpt>
+      <trkpt lat="51.50730" lon="-0.10310"><ele>5</ele><time>2024-06-04T08:26:00Z</time></trkpt>
+      <trkpt lat="51.50710" lon="-0.10490"><ele>5</ele><time>2024-06-04T08:28:00Z</time></trkpt>
+      <trkpt lat="51.50690" lon="-0.10680"><ele>5</ele><time>2024-06-04T08:30:00Z</time></trkpt>
+      <trkpt lat="51.50650" lon="-0.10860"><ele>5</ele><time>2024-06-04T08:32:00Z</time></trkpt>
+      <trkpt lat="51.50610" lon="-0.11040"><ele>5</ele><time>2024-06-04T08:34:00Z</time></trkpt>
+      <trkpt lat="51.50570" lon="-0.11210"><ele>5</ele><time>2024-06-04T08:36:00Z</time></trkpt>
+      <trkpt lat="51.50520" lon="-0.11370"><ele>5</ele><time>2024-06-04T08:38:00Z</time></trkpt>
+      <trkpt lat="51.50470" lon="-0.11510"><ele>5</ele><time>2024-06-04T08:40:00Z</time></trkpt>
+      <trkpt lat="51.50420" lon="-0.11650"><ele>5</ele><time>2024-06-04T08:42:00Z</time></trkpt>
+      <trkpt lat="51.50380" lon="-0.11780"><ele>5</ele><time>2024-06-04T08:44:00Z</time></trkpt>
+      <trkpt lat="51.50350" lon="-0.11880"><ele>5</ele><time>2024-06-04T08:46:00Z</time></trkpt>
+      <trkpt lat="51.50320" lon="-0.11970"><ele>5</ele><time>2024-06-04T08:48:00Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
