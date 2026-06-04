@@ -295,7 +295,7 @@ function loadRoute(points, name, isDemo) {
     return;
   }
 
-  const { totalMeters, elapsedSeconds, latitude, hasTime, pointCount } = result;
+  const { totalMeters, elapsedSeconds, latitude, longitude, hasTime, pointCount } = result;
 
   // Populate shared state
   state.totalMeters = totalMeters;

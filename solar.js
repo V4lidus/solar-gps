@@ -519,6 +519,30 @@ const LAND_POLYGONS = [
    [174,-36],[172,-38],[170,-42],[166,-46]],
 ];
 
+// Real land-polygon rings loaded async from Natural Earth 110m TopoJSON.
+// Falls back to LAND_POLYGONS if CDN or topojson-client is unavailable.
+let _geoRings = null;
+
+async function _fetchLandData() {
+  if (_geoRings) return;
+  if (typeof topojson === 'undefined') { _geoRings = LAND_POLYGONS; return; }
+  try {
+    const r    = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json');
+    const topo = await r.json();
+    const feat = topojson.feature(topo, topo.objects.land);
+    const rings = [];
+    const geom  = feat.geometry;
+    if (geom.type === 'MultiPolygon') {
+      for (const poly of geom.coordinates) rings.push(poly[0]);
+    } else if (geom.type === 'Polygon') {
+      rings.push(geom.coordinates[0]);
+    }
+    _geoRings = rings;
+  } catch (_) {
+    _geoRings = LAND_POLYGONS;
+  }
+}
+
 // ── Earth Rotation Renderer ──────────────────────────────────────────────────
 // Equatorial (side-on) view of Earth as seen from space, with continent
 // outlines in orthographic projection. Ghost continents show where land was
@@ -531,6 +555,7 @@ class RotationRenderer {
     this.animAngle   = 0;
     this.latitude    = 51.5;
     this.longitude   = 0;
+    _fetchLandData();
     this._loop();
   }
 
@@ -676,31 +701,39 @@ class RotationRenderer {
   }
 
   // Draw continent land masses using orthographic equatorial projection.
+  // Uses Natural Earth 110m data when available, falls back to built-in polygons.
   // centralLon: the geographic longitude facing the viewer.
-  // Only pixels with z = cos(lat)·cos(lon-centralLon) > 0 are on the visible hemisphere.
   _drawLand(ctx, centralLon, cx, cy, R, opacity) {
+    const rings = _geoRings || LAND_POLYGONS;
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, R - 0.5, 0, Math.PI * 2);
     ctx.clip();
 
-    for (const poly of LAND_POLYGONS) {
+    ctx.fillStyle   = `rgba(86,139,68,${opacity})`;
+    ctx.strokeStyle = `rgba(50,100,40,${opacity * 0.55})`;
+    ctx.lineWidth   = 0.5;
+
+    for (const ring of rings) {
       let seg = [];
+      let prevLon = null;
+
       const flush = () => {
         if (seg.length < 2) { seg = []; return; }
         ctx.beginPath();
         ctx.moveTo(seg[0][0], seg[0][1]);
         for (let k = 1; k < seg.length; k++) ctx.lineTo(seg[k][0], seg[k][1]);
         ctx.closePath();
-        ctx.fillStyle = `rgba(86,139,68,${opacity})`;
         ctx.fill();
-        ctx.strokeStyle = `rgba(50,100,40,${opacity * 0.55})`;
-        ctx.lineWidth = 0.7;
         ctx.stroke();
         seg = [];
       };
 
-      for (const [plon, plat] of poly) {
+      for (const [plon, plat] of ring) {
+        // Antimeridian guard — a >180° lon jump means a ring was split at ±180°
+        if (prevLon !== null && Math.abs(plon - prevLon) > 180) flush();
+        prevLon = plon;
+
         const phi = plat * Math.PI / 180;
         const lam = (plon - centralLon) * Math.PI / 180;
         const z   = Math.cos(phi) * Math.cos(lam); // > 0 = visible hemisphere
