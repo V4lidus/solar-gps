@@ -395,7 +395,7 @@ class OrbitalRenderer {
     _addInteractions(canvas, {
       onPan:   (dx, dy) => { this.panX += dx; this.panY += dy; },
       getZoom: () => this.userZoom,
-      setZoom: z => { this.userZoom = Math.max(0.05, Math.min(200, z)); },
+      setZoom: z => { this.userZoom = Math.max(0.0005, Math.min(200, z)); },
     });
     this._loop();
   }
@@ -405,7 +405,7 @@ class OrbitalRenderer {
   }
 
   zoomIn()    { this.userZoom = Math.min(this.userZoom * 1.5, 200); }
-  zoomOut()   { this.userZoom = Math.max(this.userZoom / 1.5, 0.05); }
+  zoomOut()   { this.userZoom = Math.max(this.userZoom / 1.5, 0.0005); }
   resetZoom() { this.userZoom = 1.0; this.panX = 0; this.panY = 0; }
 
   _loop() {
@@ -424,26 +424,32 @@ class OrbitalRenderer {
     const end   = START + angle;
     const mid   = START + angle / 2;
 
-    // Zoom so the arc always fills ≥18% of the smaller canvas dimension.
-    // For angle=0 show a fixed default view (0.4 rad of orbit).
-    const MIN_ARC_PX = Math.min(W, H) * 0.18;
-    const orbitR = (angle > 1e-9
-      ? Math.max(MIN_ARC_PX / angle, Math.min(W, H) * 0.35)
-      : Math.min(W, H) * 0.38) * this.userZoom;
+    // Auto-zoom makes the arc fill ≥18% of canvas; userZoom scales on top.
+    // Zooming out enough transitions smoothly to full-orbit view.
+    const S = Math.min(W, H);
+    const MIN_ARC_PX  = S * 0.18;
+    const fullOrbitR  = S * 0.38;               // radius that shows whole orbit
+    const autoOrbitR  = angle > 1e-9
+      ? Math.max(MIN_ARC_PX / angle, S * 0.35)
+      : fullOrbitR;
+    const orbitR = Math.max(fullOrbitR, autoOrbitR * this.userZoom);
 
-    // How much of the orbit arc fits inside the canvas at this zoom
-    const halfChord = Math.min(W, H) * 0.44;
-    const viewAngle = angle > 1e-9
-      ? 2 * Math.asin(Math.min(halfChord / orbitR, 0.9999))
-      : 0.4;
+    // When the orbit fits comfortably on screen, shift centre toward the Sun
+    // so the full circle is visible; otherwise keep the arc midpoint centred.
+    const halfChord = S * 0.44;
+    const arcBlend  = Math.max(0, Math.min(1, (orbitR / halfChord - 0.8) / 0.8));
+    const cx = W * 0.5 + this.panX - orbitR * Math.cos(mid) * arcBlend;
+    const cy = H * 0.5 + this.panY - orbitR * Math.sin(mid) * arcBlend;
 
-    // Keep the arc midpoint at canvas centre, offset by pan
-    const cx = W * 0.5 + this.panX - orbitR * Math.cos(mid);
-    const cy = H * 0.5 + this.panY - orbitR * Math.sin(mid);
-
-    // Faint dashed orbit track (only visible portion)
+    // Orbit track — full circle if it fits, visible arc otherwise
+    const showFull = orbitR <= halfChord * 1.05;
     ctx.beginPath();
-    ctx.arc(cx, cy, orbitR, mid - viewAngle / 2, mid + viewAngle / 2);
+    if (showFull) {
+      ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
+    } else {
+      const viewAngle = 2 * Math.asin(Math.min(halfChord / orbitR, 0.9999));
+      ctx.arc(cx, cy, orbitR, mid - viewAngle / 2, mid + viewAngle / 2);
+    }
     ctx.strokeStyle = 'rgba(255,255,255,0.18)';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 8]);
@@ -541,8 +547,10 @@ class OrbitalRenderer {
     const pctStr = pct < 0.0001 ? pct.toExponential(2) + '%'
                  : pct < 0.01   ? pct.toFixed(5) + '%'
                  :                 pct.toFixed(3) + '%';
-    const autoZoom = Math.max(1, Math.round(orbitR / (Math.min(W, H) * 0.38 * this.userZoom)));
-    const zoomStr  = this.userZoom !== 1.0 ? ` · ${this.userZoom.toFixed(2)}× user zoom` : '';
+    const autoZoomFactor = Math.max(1, Math.round(autoOrbitR / fullOrbitR));
+    const viewLabel = showFull
+      ? 'Full orbit view'
+      : `${autoZoomFactor}× auto-zoom${this.userZoom !== 1.0 ? ` · ${this.userZoom.toFixed(3)}× user` : ''}`;
 
     ctx.fillStyle = 'rgba(8,8,18,0.75)';
     ctx.fillRect(0, H - 36, W, 36);
@@ -552,7 +560,7 @@ class OrbitalRenderer {
     ctx.fillText(`${pctStr} of full orbit`, 10, H - 20);
     ctx.fillStyle = 'rgba(255,255,255,0.32)';
     ctx.font = '9px sans-serif';
-    ctx.fillText((autoZoom > 1 ? `${autoZoom}× auto-zoom` : 'Full orbit view') + zoomStr, 10, H - 7);
+    ctx.fillText(viewLabel, 10, H - 7);
   }
 }
 
@@ -783,49 +791,96 @@ class RotationRenderer {
   }
 
   // Draw continent land masses using orthographic equatorial projection.
-  // Uses Natural Earth 110m data when available, falls back to built-in polygons.
-  // centralLon: the geographic longitude facing the viewer.
+  // Uses proper limb interpolation: when a polygon edge crosses from the
+  // visible hemisphere (z≥0) to the back (z<0), we compute the exact limb
+  // intersection and include it in the path, avoiding the "chord through ocean"
+  // artefact that occurred when closePath() connected arbitrary limb points.
   _drawLand(ctx, centralLon, cx, cy, R, opacity) {
     const rings = _geoRings || LAND_POLYGONS;
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, R - 0.5, 0, Math.PI * 2);
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
     ctx.clip();
 
     ctx.fillStyle   = `rgba(86,139,68,${opacity})`;
-    ctx.strokeStyle = `rgba(50,100,40,${opacity * 0.55})`;
+    ctx.strokeStyle = `rgba(50,100,40,${opacity * 0.5})`;
     ctx.lineWidth   = 0.5;
 
-    for (const ring of rings) {
-      let seg = [];
-      let prevLon = null;
+    // Project lon/lat → canvas {x, y, z}
+    const proj = (lon, lat) => {
+      const phi = lat * Math.PI / 180;
+      const lam = (lon - centralLon) * Math.PI / 180;
+      return {
+        x: cx + R * Math.cos(phi) * Math.sin(lam),
+        y: cy - R * Math.sin(phi),
+        z: Math.cos(phi) * Math.cos(lam),
+        lon, lat,
+      };
+    };
 
-      const flush = () => {
-        if (seg.length < 2) { seg = []; return; }
+    // Linear-interpolate to the z=0 limb crossing between two projected points
+    const limbPt = (a, b) => {
+      const t = a.z / (a.z - b.z);
+      return proj(a.lon + t * (b.lon - a.lon), a.lat + t * (b.lat - a.lat));
+    };
+
+    for (const ring of rings) {
+      const n = ring.length;
+      if (n < 3) continue;
+
+      const pts = ring.map(([lo, la]) => proj(lo, la));
+
+      // Quick reject: entirely on back hemisphere
+      if (pts.every(p => p.z < 0)) continue;
+
+      // Quick accept: entirely visible — simple filled polygon
+      if (pts.every(p => p.z >= 0)) {
         ctx.beginPath();
-        ctx.moveTo(seg[0][0], seg[0][1]);
-        for (let k = 1; k < seg.length; k++) ctx.lineTo(seg[k][0], seg[k][1]);
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let k = 1; k < n; k++) ctx.lineTo(pts[k].x, pts[k].y);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
-        seg = [];
-      };
-
-      for (const [plon, plat] of ring) {
-        // Antimeridian guard — a >180° lon jump means a ring was split at ±180°
-        if (prevLon !== null && Math.abs(plon - prevLon) > 180) flush();
-        prevLon = plon;
-
-        const phi = plat * Math.PI / 180;
-        const lam = (plon - centralLon) * Math.PI / 180;
-        const z   = Math.cos(phi) * Math.cos(lam); // > 0 = visible hemisphere
-        if (z > 0) {
-          seg.push([cx + R * Math.cos(phi) * Math.sin(lam), cy - R * Math.sin(phi)]);
-        } else {
-          flush();
-        }
+        continue;
       }
-      flush();
+
+      // Partial visibility: build path with limb intersection points.
+      // Process edges a→b (including the closing edge b[n-1]→pts[0]).
+      // When an edge crosses the limb we insert the interpolated limb point
+      // so the polygon closes correctly along the hemisphere boundary.
+      const path = [];
+
+      for (let i = 0; i < n; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % n];
+
+        // Antimeridian guard: skip edges with >180° longitude jump
+        if (Math.abs(b.lon - a.lon) > 180) continue;
+
+        if (a.z >= 0 && b.z >= 0) {
+          // Both visible
+          if (path.length === 0) path.push(a);
+          path.push(b);
+        } else if (a.z >= 0 && b.z < 0) {
+          // Leaving visible hemisphere — add limb crossing
+          if (path.length === 0) path.push(a);
+          path.push(limbPt(a, b));
+        } else if (a.z < 0 && b.z >= 0) {
+          // Entering visible hemisphere — add limb crossing then b
+          path.push(limbPt(a, b));
+          path.push(b);
+        }
+        // Both invisible: skip
+      }
+
+      if (path.length < 3) continue;
+
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let k = 1; k < path.length; k++) ctx.lineTo(path[k].x, path[k].y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
     }
 
     ctx.restore();
@@ -888,20 +943,26 @@ class GalacticRenderer {
     }
     ctx.restore();
 
-    // Scale: choose a round reference that fits nicely, then apply user zoom.
-    // Zoom in (userZoom > 1) shrinks scaleMax so the trail fills more of the track.
-    const MOON = 384_400;
-    const AU   = 149_597_870;
-    let scaleMax = MOON;
-    if (km > AU)        scaleMax = km * 1.25;
-    else if (km > MOON) scaleMax = AU   * 1.15;
-    else                scaleMax = MOON * 1.15;
-    scaleMax = Math.max(scaleMax / this.userZoom, km > 0 ? km * 1.05 : MOON * 0.1);
-
-    const refs = [
-      { km: MOON, label: 'Moon (384k km)', color: 'rgba(200,200,220,0.55)' },
-      { km: AU,   label: '1 AU · Sun',     color: 'rgba(255,215,0,0.5)'   },
+    // Solar-system distance references (orbital radii from Sun, in km).
+    // Used as scale markers so the user can see how the galactic trail
+    // compares to distances between planets.
+    const REFS = [
+      { km:           384_400, label: 'Moon',    symbol: '🌕', color: 'rgba(200,200,220,0.7)' },
+      { km:        57_900_000, label: 'Mercury', symbol: '☿', color: 'rgba(180,160,130,0.7)' },
+      { km:       108_200_000, label: 'Venus',   symbol: '♀', color: 'rgba(255,210,100,0.7)' },
+      { km:       149_597_870, label: 'Earth',   symbol: '🌍', color: 'rgba(100,180,255,0.7)' },
+      { km:       227_900_000, label: 'Mars',    symbol: '♂', color: 'rgba(210,100,70,0.7)'  },
+      { km:       778_500_000, label: 'Jupiter', symbol: '♃', color: 'rgba(210,180,130,0.7)' },
+      { km:     1_432_000_000, label: 'Saturn',  symbol: '♄', color: 'rgba(220,200,140,0.7)' },
+      { km:     2_867_000_000, label: 'Uranus',  symbol: '♅', color: 'rgba(130,210,230,0.7)' },
+      { km:     4_515_000_000, label: 'Neptune', symbol: '♆', color: 'rgba(80,120,255,0.7)'  },
     ];
+
+    // Auto-select scale: next reference beyond current km; zoom adjusts further.
+    const MOON = REFS[0].km;
+    const next = REFS.find(r => r.km > km);
+    let scaleMax = next ? next.km * 1.2 : km * 1.25;
+    scaleMax = Math.max(scaleMax / this.userZoom, km > 0 ? km * 1.05 : MOON * 0.1);
 
     // Track geometry — panX lets user slide left/right to explore the scale
     const ty = H * 0.52;
@@ -916,10 +977,14 @@ class GalacticRenderer {
     ctx.roundRect(tx0, ty - th / 2, tw, th, 4);
     ctx.fill();
 
-    // Reference markers
-    for (const ref of refs) {
+    // Reference markers — only draw those within the visible scale range
+    // and wide enough apart to avoid label collisions (min 28px gap)
+    let lastLabelX = -Infinity;
+    for (const ref of REFS) {
       if (ref.km > scaleMax * 1.02) continue;
       const rx = toX(ref.km);
+      if (rx < tx0 - 4 || rx > tx1 + 4) continue; // off-screen
+
       ctx.beginPath();
       ctx.moveTo(rx, ty - th - 2);
       ctx.lineTo(rx, ty + th + 2);
@@ -928,10 +993,14 @@ class GalacticRenderer {
       ctx.setLineDash([2, 3]);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = ref.color;
-      ctx.font = '9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(ref.label, rx, ty - th - 6);
+
+      if (rx - lastLabelX >= 28) {
+        ctx.fillStyle = ref.color;
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${ref.symbol} ${ref.label}`, rx, ty - th - 6);
+        lastLabelX = rx;
+      }
     }
 
     // Filled trail
